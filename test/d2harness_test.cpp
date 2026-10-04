@@ -74,6 +74,7 @@ Player &SetupHero(Point start, bool running)
 	player.destAction = ACTION_NONE;
 	player.position.tile = player.position.future = player.position.old = start;
 	dPlayer[start.x][start.y] = 1;
+	d2probe::ForgetPositions();
 	d2::FreeMoveReset(player);
 	StartStand(player, Direction::South);
 	return player;
@@ -484,6 +485,67 @@ TEST_F(D2Harness, SqueezesDiagonallyPastChests)
 	EXPECT_GT(trips, 0);
 }
 
+/** Screen directions as world steps: the 8 ways a stick or the arrow keys push. */
+constexpr Displacement ScreenSteps[8] = { { 1, 1 }, { 0, 1 }, { -1, 1 }, { -1, 0 }, { -1, -1 }, { 0, -1 }, { 1, -1 }, { 1, 0 } };
+
+TEST_F(D2Harness, NeverStuckNextToAChest)
+{
+	// Press into a chest from every side and corner (as a stick or a held mouse does), then turn and push
+	// the other way. Wherever a stock Diablo 1 step would be possible, the hero must get going again.
+	const Point chest { 45, 45 };
+	int cases = 0;
+	int stuck = 0;
+	for (int ox = -2; ox <= 2; ox++) {
+		for (int oy = -2; oy <= 2; oy++) {
+			const Point start = chest + Displacement { ox, oy };
+			if (start == chest)
+				continue;
+			for (int into = 0; into < 8; into++) {
+				for (int then = 0; then < 8; then++) {
+					ClearLevel();
+					leveltype = DTYPE_CATHEDRAL;
+					SolidObject(0, chest);
+					Player &player = SetupHero(start, false);
+					// Phase 1: push towards the chest for a while (gamepad style: one tile ahead, every tick)
+					for (int tick = 0; tick < 24; tick++) {
+						const Point ahead = player.position.future + ScreenSteps[into];
+						ClrPlrPath(player);
+						MakePlrPath(player, ahead, true);
+						player.destAction = ACTION_NONE;
+						ProcessPlayers();
+						d2probe::CheckTick();
+					}
+					// Phase 2: push another way; if a stock step that way is possible, the hero must leave the tile
+					const Point from = player.position.tile;
+					const Point next = from + ScreenSteps[then];
+					const Point after = next + ScreenSteps[then];
+					if (!PosOkPlayer(player, next) || !PosOkPlayer(player, after) || !path_solid_pieces(from, next))
+						continue;
+					cases++;
+					bool left = false;
+					for (int tick = 0; tick < 24 && !left; tick++) {
+						const Point ahead = player.position.future + ScreenSteps[then];
+						ClrPlrPath(player);
+						MakePlrPath(player, ahead, true);
+						player.destAction = ACTION_NONE;
+						ProcessPlayers();
+						d2probe::CheckTick();
+						left = player.position.tile != from;
+					}
+					if (!left) {
+						stuck++;
+						if (stuck <= 10)
+							ADD_FAILURE() << "stuck at (" << from.x - chest.x << "," << from.y - chest.y << ") from the chest, sub-tile ("
+							              << player.freeMove.x - from.x * 256 << "," << player.freeMove.y - from.y * 256 << "), after pushing "
+							              << into << " then " << then;
+					}
+				}
+			}
+		}
+	}
+	std::printf("CHESTSIDE cases=%d stuck=%d\n", cases, stuck);
+}
+
 TEST_F(D2Harness, NeverStuckAmongScatteredObjects)
 {
 	// A room strewn with chests and barrels: every trip stock path finding can make, the mod must finish
@@ -589,6 +651,110 @@ TEST_F(D2Harness, FacesTheWayItMovesOnScreen)
 		}
 	}
 	std::printf("FACING directions=72 wrong=%d flickering=%d\n", wrong, flickers);
+}
+
+/** Angle on screen (degrees, y down) of a world delta, and how far a sprite direction is from it. */
+double ScreenAngle(double dx, double dy)
+{
+	return std::atan2((dx + dy) * 16.0, (dx - dy) * 32.0) * 180.0 / 3.14159265358979;
+}
+
+double SpriteOffBy(Direction dir, double angle)
+{
+	constexpr double SpriteAngles[8] = { 90.0, 153.43, 180.0, 206.57, 270.0, 333.43, 0.0, 26.57 };
+	double diff = std::fmod(std::abs(angle - SpriteAngles[static_cast<int>(dir)]) + 360.0, 360.0);
+	return std::min(diff, 360.0 - diff);
+}
+
+TEST_F(D2Harness, FacingFollowsTheMouse)
+{
+	// Hold the mouse and sweep it around the hero, and click around a room of objects: on every tick the hero
+	// moves, the sprite must be the one closest to how the hero is actually moving on screen (judged over
+	// the last 3 ticks), give or take the few degrees of hysteresis that stop flicker
+	uint32_t seed = 777;
+	auto random = [&seed](int n) {
+		seed = seed * 1103515245U + 12345U;
+		return static_cast<int>((seed >> 16) % static_cast<uint32_t>(n));
+	};
+	int checked = 0;
+	int wrong = 0;
+	double worst = 0;
+	for (int scenario = 0; scenario < 2; scenario++) {
+		ClearLevel();
+		leveltype = DTYPE_CATHEDRAL;
+		if (scenario == 1) {
+			for (int i = 0; i < 40; i++) {
+				const Point tile { 30 + random(24), 30 + random(24) };
+				if (tile != Start && dObject[tile.x][tile.y] == 0)
+					SolidObject(i, tile);
+			}
+		}
+		Player &player = SetupHero(Start, false);
+		int32_t histX[4] = {}, histY[4] = {};
+		bool lastTickMismatched = false;
+		for (int tick = 0; tick < 3000; tick++) {
+			if (scenario == 0) {
+				// cursor circling the hero at 3 tiles, a little further round every tick
+				const double a = tick * 0.02;
+				const int32_t cx = player.freeMove.x + static_cast<int32_t>(std::cos(a) * 768);
+				const int32_t cy = player.freeMove.y + static_cast<int32_t>(std::sin(a) * 768);
+				const Point tile { (cx + 128) >> 8, (cy + 128) >> 8 };
+				d2::OnWalkFine(player, tile, static_cast<uint16_t>(((cx - tile.x * 256 + 128) & 0xFF) | (((cy - tile.y * 256 + 128) & 0xFF) << 8)));
+			} else if (!d2::FreeMoveActive(player) || random(40) == 0) {
+				const Point target { 30 + random(24), 30 + random(24) };
+				if (dObject[target.x][target.y] == 0)
+					d2::OnWalkFine(player, target, static_cast<uint16_t>(random(256) | (random(256) << 8)));
+			}
+			const int32_t beforeX = player.freeMove.x, beforeY = player.freeMove.y;
+			ProcessPlayers();
+			d2probe::CheckTick();
+			for (int k = 3; k > 0; k--) {
+				histX[k] = histX[k - 1];
+				histY[k] = histY[k - 1];
+			}
+			histX[0] = player.freeMove.x - beforeX;
+			histY[0] = player.freeMove.y - beforeY;
+			const int32_t mx = histX[0] + histX[1] + histX[2], my = histY[0] + histY[1] + histY[2];
+			if (!d2::FreeMoveActive(player) || histX[0] == 0 && histY[0] == 0 || std::max(std::abs(mx), std::abs(my)) < 48) {
+				lastTickMismatched = false;
+				continue;
+			}
+			// Judge steady motion only: right after a turn the last few ticks still point the old way
+			bool steady = true;
+			for (int k = 1; k < 3; k++) {
+				double turn = std::fmod(std::abs(ScreenAngle(histX[k], histY[k]) - ScreenAngle(histX[0], histY[0])) + 360.0, 360.0);
+				steady = steady && std::min(turn, 360.0 - turn) < 15.0;
+			}
+			if (!steady) {
+				lastTickMismatched = false;
+				continue;
+			}
+			const double angle = ScreenAngle(mx, my);
+			double best = 1e9;
+			for (int d = 0; d < 8; d++)
+				best = std::min(best, SpriteOffBy(static_cast<Direction>(d), angle));
+			const double off = SpriteOffBy(player.freeMove.facing, angle) - best;
+			checked++;
+			// The sprite turns as the hero reaches a path point, so on that one tick it already shows the next leg:
+			// only a mismatch lasting two ticks in a row is a real one
+			const bool mismatch = off > 8.0;
+			const bool persistent = mismatch && lastTickMismatched;
+			lastTickMismatched = mismatch;
+			if (persistent)
+				worst = std::max(worst, off);
+			if (persistent) {
+				wrong++;
+				if (wrong <= 8)
+					ADD_FAILURE() << "scenario " << scenario << " tick " << tick << ": moving at " << angle << " degrees on screen, sprite "
+					              << static_cast<int>(player.freeMove.facing) << " is " << off << " degrees worse than the best; steps ("
+					              << histX[2] << "," << histY[2] << ") (" << histX[1] << "," << histY[1] << ") (" << histX[0] << "," << histY[0] << ") wp "
+					              << static_cast<int>(player.freeMove.waypointIndex) << "/" << static_cast<int>(player.freeMove.waypointCount) << " to ("
+					              << player.freeMove.waypointX[player.freeMove.waypointIndex] - player.freeMove.x << "," << player.freeMove.waypointY[player.freeMove.waypointIndex] - player.freeMove.y << ")";
+			}
+		}
+	}
+	std::printf("MOUSEFACING ticks=%d wrong=%d worst=%.1f\n", checked, wrong, worst);
+	EXPECT_GT(checked, 1000);
 }
 
 TEST_F(D2Harness, WallsAreNeverEntered)
@@ -729,3 +895,4 @@ TEST_F(D2Harness, ProbesCoverTheMovementPath)
 
 } // namespace
 } // namespace devilution
+

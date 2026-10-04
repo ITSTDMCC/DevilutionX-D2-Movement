@@ -127,6 +127,14 @@ def main():
         if m:
             check('facing: sprite matches on-screen motion, no flicker', m.group(2) == '0' and m.group(3) == '0',
                   f'{m.group(1)} directions: {m.group(2)} wrong, {m.group(3)} flickering', 'parity')
+        m = re.search(r'CHESTSIDE cases=(\d+) stuck=(\d+)', text)
+        if m:
+            check('collision: never stuck pressed against a chest', m.group(2) == '0' and 'NeverStuckNextToAChest' not in failed_tests,
+                  f'{m.group(1)} cases of pushing into a chest from every side and corner, then another way: {m.group(2)} stuck', 'parity')
+        m = re.search(r'MOUSEFACING ticks=(\d+) wrong=(\d+) worst=([\d.]+)', text)
+        if m:
+            check('facing: follows the mouse (held and clicking around objects)', m.group(2) == '0' and 'FacingFollowsTheMouse' not in failed_tests,
+                  f'{m.group(1)} moving ticks checked, {m.group(2)} with the wrong sprite for 2+ ticks', 'parity')
         m = re.search(r'GAMEPAD frames=(\d+) over 64 ticks, previews skipped=(\d+)', text)
         if m:
             check('gamepad: walk cycle keeps animating', 'GamepadWalkKeepsAnimating' not in failed_tests,

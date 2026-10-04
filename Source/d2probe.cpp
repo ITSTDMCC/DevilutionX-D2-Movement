@@ -200,7 +200,7 @@ void CheckTick()
 				const int64_t mx = move.x - last.x;
 				const int64_t my = move.y - last.y;
 				// Never faster than a stock Diablo 1 step: walking in the dungeon, jogging in town
-				const int64_t limit = (leveltype == DTYPE_TOWN ? d2::D1TownRunSpeed : d2::D1WalkSpeed) + 1;
+				const int64_t limit = (leveltype == DTYPE_TOWN ? d2::D1TownRunSpeed : d2::D1WalkSpeed) + 4; // + a corner cut, repaid next tick
 				if (std::max(std::abs(mx), std::abs(my)) > limit)
 					Fail("speed_above_d1", fmt::format("p{} moved ({},{}) in one tick", id, mx, my));
 			}
@@ -278,6 +278,12 @@ void Dump(std::string_view reason)
 	Write(fmt::format("STAT run_ticks {} run_moved {} run_expected {}", RunStats.ticks, RunStats.moved, RunStats.expected));
 	Write(fmt::format("STAT failures {}", Failures));
 	std::fflush(LogFile);
+}
+
+void ForgetPositions()
+{
+	for (LastPosition &last : LastPositions)
+		last = {};
 }
 
 void Reset()

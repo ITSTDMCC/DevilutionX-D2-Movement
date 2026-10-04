@@ -112,6 +112,10 @@ struct FreeMoveState {
 	/** Fraction of a sub-tile unit not yet moved, in 1/4096ths (Diablo 2 keeps 1/65536 subtile precision). */
 	int32_t carryX = 0;
 	int32_t carryY = 0;
+	/** Waypoints before this index belong to a corner cut (not where the hero is really heading). */
+	uint8_t hopEnd = 0;
+	/** Distance a corner cut overspent last tick, taken off this tick's budget. */
+	int32_t debt = 0;
 	/** Where the current order goes, so the hero can find a new way when the old one turns out to be blocked. */
 	int32_t goalX = 0;
 	int32_t goalY = 0;

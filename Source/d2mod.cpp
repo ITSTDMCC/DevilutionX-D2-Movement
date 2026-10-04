@@ -530,8 +530,13 @@ void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool en
 
 	move.waypointCount = 0;
 	move.waypointIndex = 0;
+	move.hopEnd = 0;
 	move.carryX = 0;
 	move.carryY = 0;
+	// Walking "into" a chest, a wall or anything else that cannot be stood on (a stick pushing against it, a click
+	// on a blocked spot): go next to it and stop there, like stock Diablo 1, rather than shuffling on the spot
+	if (endspace && tile != start && !PosOkPlayer(player, tile))
+		endspace = false;
 	move.goalX = targetX;
 	move.goalY = targetY;
 	move.goalEndspace = endspace;
@@ -611,20 +616,26 @@ void FreeMoveTick(Player &player)
 	bool hopped = false;
 	int32_t lastStepX = 0;
 	int32_t lastStepY = 0;
-	int64_t budget = speed;
+	int64_t budget = speed - move.debt;
+	move.debt = 0;
 	while (budget > 0 && move.active) {
 		const int32_t wx = move.waypointX[move.waypointIndex];
 		const int32_t wy = move.waypointY[move.waypointIndex];
 		const int64_t dx = wx - move.x;
 		const int64_t dy = wy - move.y;
 		const int64_t steps = std::max(std::abs(dx), std::abs(dy));
+		const int64_t budgetBefore = budget;
 
 		int32_t nextX;
 		int32_t nextY;
-		if (steps <= budget) {
+		// A corner cut is a 4 unit hop through the exact corner point, which belongs to neither tile cleanly: always
+		// make it in one go rather than stopping on the corner
+		if (steps <= budget || steps <= 4) {
 			nextX = wx;
 			nextY = wy;
-			budget -= steps;
+			if (steps > budget)
+				move.debt = static_cast<int32_t>(steps - budget); // paid back next tick, so pacing stays exact
+			budget = std::max<int64_t>(budget - steps, 0);
 			move.carryX = 0;
 			move.carryY = 0;
 			if (!move.animating && steps > 0)
@@ -677,8 +688,11 @@ void FreeMoveTick(Player &player)
 				move.waypointX[move.waypointIndex + 1] = cornerX + 2 * sx;
 				move.waypointY[move.waypointIndex + 1] = cornerY + 2 * sy;
 				move.waypointCount += 2;
+				move.hopEnd = static_cast<uint8_t>(move.waypointIndex + 2);
 				move.carryX = 0;
 				move.carryY = 0;
+				budget = budgetBefore; // nothing was spent: the blocked step never happened
+				move.debt = 0;
 				continue;
 			}
 			// Clipping the corner of a wall, barrel or other object: slide along it on the axis that is free,
@@ -727,13 +741,13 @@ void FreeMoveTick(Player &player)
 	}
 
 	// Face the way the hero is going on screen. Single ticks are too short to judge by (rounding makes them wobble),
-	// so look at where the path leads, skipping the tiny legs of a corner cut; when sliding along an obstacle,
-	// face the way the slide actually went.
+	// so aim at the path point the hero is walking to, looking past the 4 unit hop through a corner cut; when
+	// sliding along an obstacle, face the way the slide actually went.
 	if (slid) {
 		SetFacing(player, FacingForMotion(lastStepX, lastStepY, move.facing));
 	} else if (move.active) {
 		int j = move.waypointIndex;
-		while (j + 1 < move.waypointCount && std::max(std::abs(move.waypointX[j] - move.x), std::abs(move.waypointY[j] - move.y)) < SubTile / 2)
+		while (j + 1 < move.waypointCount && j < move.hopEnd && std::max(std::abs(move.waypointX[j] - move.x), std::abs(move.waypointY[j] - move.y)) < 8)
 			j++;
 		SetFacing(player, FacingForMotion(move.waypointX[j] - move.x, move.waypointY[j] - move.y, move.facing));
 	} else if (lastStepX != 0 || lastStepY != 0) {

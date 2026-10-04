@@ -115,6 +115,9 @@ void RecordBench(int frames, float seconds);
 /** @brief Write all counters and statistics (also runs automatically at exit). */
 void Dump(std::string_view reason);
 
+/** @brief Forget where heroes were last tick (a test placed a hero somewhere new). */
+void ForgetPositions();
+
 /** @brief Zero every counter and statistic (used between harness scenarios). */
 void Reset();
 
