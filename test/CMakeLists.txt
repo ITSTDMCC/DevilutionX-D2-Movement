@@ -16,6 +16,7 @@ set(tests
   codec_test
   cursor_test
   d2mod_test
+  d2glide_sim_test
   dead_test
   diablo_test
   drlg_common_test

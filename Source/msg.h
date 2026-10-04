@@ -421,6 +421,13 @@ enum _cmd_id : uint8_t {
 	// body (TCmdParam1)
 	//    int16_t running
 	CMD_SETRUN,
+	// Diablo 2 mod: walk to an exact point inside a tile.
+	//
+	// body (TCmdLocParam1)
+	//    int8_t x
+	//    int8_t y
+	//    int16_t fine offset inside the tile (low byte x, high byte y, 128 = centre)
+	CMD_WALKXY_FINE,
 	// Fake command; set current player for succeeding mega pkt buffer messages.
 	//
 	// body (TFakeCmdPlr)

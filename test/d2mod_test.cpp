@@ -78,12 +78,11 @@ TEST(D2ModTest, StraightenPathAvoidsBlockedTiles)
 	}
 }
 
-TEST(D2ModTest, StraightenPathLeavesShortPathsAlone)
+TEST(D2ModTest, StraightenPathLeavesSingleStepsAlone)
 {
-	int8_t path[MaxPathLength] = { WALK_N, WALK_E };
-	EXPECT_EQ(d2::StraightenPath([](Point) { return true; }, { 20, 20 }, path, 2), 2);
+	int8_t path[MaxPathLength] = { WALK_N };
+	EXPECT_EQ(d2::StraightenPath([](Point) { return true; }, { 20, 20 }, path, 1), 1);
 	EXPECT_EQ(path[0], WALK_N);
-	EXPECT_EQ(path[1], WALK_E);
 }
 
 TEST(D2ModTest, StraightenPathReportsSegments)
@@ -95,38 +94,6 @@ TEST(D2ModTest, StraightenPathReportsSegments)
 	EXPECT_EQ(segments[0], 6);
 	for (int i = 1; i < length; i++)
 		EXPECT_EQ(segments[i], 0);
-}
-
-TEST(D2ModTest, GlideKeepsFacingAndEndsOnTile)
-{
-	Player player {};
-	player.position.tile = { 20, 20 };
-	player._pmode = PM_STAND;
-	player._pdir = Direction::South;
-	int8_t path[MaxPathLength] = { WALK_E, WALK_E, WALK_SE, WALK_SE, WALK_SE, WALK_SE };
-	for (int8_t &step : player.walkpath)
-		step = WALK_NONE;
-	const int length = d2::StraightenPath([](Point) { return true; }, player.position.tile, path, 6, player.walkSegLen);
-	for (int i = 0; i < length; i++)
-		player.walkpath[i] = path[i];
-	const Point end = Follow(player.position.tile, path, length);
-
-	const Direction facing = d2::GlideStartStep(player);
-	for (int i = 1; i < length; i++) {
-		// Take the step, then shift the path the way the engine does
-		player.position.tile += d2::WalkStepDisplacement(player.walkpath[0]);
-		for (size_t j = 1; j < MaxPathLength; j++) {
-			player.walkpath[j - 1] = player.walkpath[j];
-			player.walkSegLen[j - 1] = player.walkSegLen[j];
-		}
-		EXPECT_EQ(d2::GlideStartStep(player), facing) << "Facing changed mid-segment at step " << i;
-	}
-	player.position.tile += d2::WalkStepDisplacement(player.walkpath[0]);
-	ASSERT_EQ(player.position.tile, end);
-
-	// Standing still at the end of the segment leaves no offset behind
-	d2::GlideTick(player);
-	EXPECT_EQ(d2::GlideCorrection(player), Displacement {});
 }
 
 } // namespace

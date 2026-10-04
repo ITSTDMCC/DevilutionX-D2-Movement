@@ -380,7 +380,7 @@ void CheckCursMove()
 
 	const Player &myPlayer = *MyPlayer;
 
-	// Diablo 2 mod: the camera follows the hero's glide
+	// Diablo 2 mod: the camera follows the hero's exact position
 	const Displacement glideCorrection = d2::GlideCorrection(myPlayer);
 	sx += glideCorrection.deltaX;
 	sy += glideCorrection.deltaY;
@@ -434,6 +434,10 @@ void CheckCursMove()
 	// Shift position to match diamond grid aligment
 	int px = sx % TILE_WIDTH;
 	int py = sy % TILE_HEIGHT;
+
+	// Diablo 2 mod: exact point under the mouse in sub-tile units. Tile (mx, my) is centred on the
+	// left edge of this cell; 64 pixels across is one tile east, 32 pixels down is one tile south.
+	d2::SetCursorFine(mx * d2::SubTile + 4 * px + 8 * (py - TILE_HEIGHT / 2), my * d2::SubTile + 8 * (py - TILE_HEIGHT / 2) - 4 * px);
 
 	// Shift position to match diamond grid aligment
 	bool flipy = py < (px / 2);

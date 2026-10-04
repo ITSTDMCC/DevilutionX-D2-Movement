@@ -236,7 +236,7 @@ void LeftMouseCmd(bool bShift)
 			NetSendCmdLocParam1(true, CMD_TALKXY, cursPosition, pcursmonst);
 		if (pcursitem == -1 && pcursmonst == -1 && pcursplr == -1) {
 			LastMouseButtonAction = MouseActionType::Walk;
-			NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, cursPosition);
+			d2::SendWalkToCursor(true);
 		}
 		return;
 	}
@@ -286,7 +286,7 @@ void LeftMouseCmd(bool bShift)
 	}
 	if (!bShift && pcursitem == -1 && ObjectUnderCursor == nullptr && pcursmonst == -1 && pcursplr == -1) {
 		LastMouseButtonAction = MouseActionType::Walk;
-		NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, cursPosition);
+		d2::SendWalkToCursor(true);
 	}
 }
 

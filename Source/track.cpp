@@ -10,6 +10,7 @@
 #include "controls/game_controls.h"
 #include "controls/plrctrls.h"
 #include "cursor.h"
+#include "d2mod.h"
 #include "engine/point.hpp"
 #include "player.h"
 #include "stores.h"
@@ -26,11 +27,8 @@ void RepeatWalk(Player &player)
 	if (player._pmode != PM_STAND && !(player.isWalking() && player.AnimInfo.getFrameToUseForRendering() > 6))
 		return;
 
-	const Point target = player.GetTargetPosition();
-	if (cursPosition == target)
-		return;
-
-	NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, cursPosition);
+	// Diablo 2 mod: keep steering towards the exact point under the mouse
+	d2::SendWalkToCursor(false);
 }
 
 } // namespace

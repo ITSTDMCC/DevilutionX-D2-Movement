@@ -278,10 +278,8 @@ struct Player {
 	uint32_t _pNextExper;
 	PLR_MODE _pmode;
 	int8_t walkpath[MaxPathLength];
-	/** Diablo 2 mod: length of the straight segment starting at each walkpath step (0 = continues the previous one). */
-	uint8_t walkSegLen[MaxPathLength];
-	/** Diablo 2 mod: render-only glide along the straight line (not saved or synced). */
-	d2::GlideState glide;
+	/** Diablo 2 mod: sub-tile position and free movement (not saved, derived from synced commands). */
+	d2::FreeMoveState freeMove;
 	bool plractive;
 	action_id destAction;
 	int destParam1;

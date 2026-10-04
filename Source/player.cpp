@@ -186,15 +186,8 @@ void StartWalk(Player &player, Direction dir, bool pmWillBeCalled)
 		return;
 	}
 
-	// The hero is drawn gliding along the straight segment and faces along it,
-	// while the step itself may go to either neighbouring tile direction
-	const Direction facing = d2::GlideStartStep(player);
-	StartWalkAnimation(player, facing, pmWillBeCalled);
+	StartWalkAnimation(player, dir, pmWillBeCalled);
 	HandleWalkMode(player, dir);
-	if (player.isWalking())
-		player.tempDirection = facing;
-	else
-		d2::GlideCancelStep(player);
 }
 
 void ClearStateVariables(Player &player)
@@ -427,7 +420,7 @@ void InitLevelChange(Player &player)
 
 	// Make sure everyone on the level knows whether we are walking or running
 	d2::ShareRunState();
-	d2::GlideReset(player);
+	d2::FreeMoveReset(player);
 
 	FixPlrWalkTags(player);
 	SetPlayerOld(player);
@@ -1207,6 +1200,32 @@ void CheckNewPath(Player &player, bool pmWillBeCalled)
 		break;
 	}
 
+	// Diablo 2 mod: while moving freely, keep going until the order can be carried out
+	if (d2::FreeMoveActive(player)) {
+		switch (player.destAction) {
+		case ACTION_NONE:
+		case ACTION_WALK:
+		case ACTION_OPERATE:
+		case ACTION_DISARM:
+		case ACTION_PICKUPITEM:
+		case ACTION_PICKUPAITEM:
+		case ACTION_TALK:
+			// These happen once the hero arrives next to the target
+			return;
+		case ACTION_ATTACKMON:
+			if (player.position.tile.WalkingDistance(monster->position.future) > 1)
+				return;
+			break;
+		case ACTION_ATTACKPLR:
+			if (player.position.tile.WalkingDistance(target->position.future) > 1)
+				return;
+			break;
+		default:
+			break;
+		}
+		d2::FreeMoveStop(player);
+	}
+
 	Direction d;
 	if (player.walkpath[0] != WALK_NONE) {
 		if (player._pmode == PM_STAND) {
@@ -1263,11 +1282,9 @@ void CheckNewPath(Player &player, bool pmWillBeCalled)
 
 			for (size_t j = 1; j < MaxPathLength; j++) {
 				player.walkpath[j - 1] = player.walkpath[j];
-				player.walkSegLen[j - 1] = player.walkSegLen[j];
 			}
 
 			player.walkpath[MaxPathLength - 1] = WALK_NONE;
-			player.walkSegLen[MaxPathLength - 1] = 0;
 
 			if (player._pmode == PM_STAND) {
 				StartStand(player, player._pdir);
@@ -1747,6 +1764,9 @@ int Player::GetMaximumAttributeValue(CharacterAttribute attribute) const
 
 Point Player::GetTargetPosition() const
 {
+	if (d2::FreeMoveActive(*this))
+		return d2::FreeMoveTargetTile(*this);
+
 	// clang-format off
 	constexpr int DirectionOffsetX[8] = {  0,-1, 1, 0,-1, 1, 1,-1 };
 	constexpr int DirectionOffsetY[8] = { -1, 0, 0, 1,-1,-1, 1, 1 };
@@ -1865,6 +1885,7 @@ player_graphic Player::getGraphic() const
 {
 	switch (_pmode) {
 	case PM_STAND:
+		return freeMove.animating ? player_graphic::Walk : player_graphic::Stand;
 	case PM_NEWLVL:
 	case PM_QUIT:
 		return player_graphic::Stand;
@@ -3062,6 +3083,9 @@ void ProcessPlayers()
 			do {
 				switch (player._pmode) {
 				case PM_STAND:
+					d2::FreeMoveTick(player);
+					tplayer = false;
+					break;
 				case PM_NEWLVL:
 				case PM_QUIT:
 					tplayer = false;
@@ -3097,7 +3121,6 @@ void ProcessPlayers()
 			if (player._pmode != PM_DEATH || player.AnimInfo.tickCounterOfCurrentFrame != 40)
 				player.AnimInfo.processAnimation();
 
-			d2::GlideTick(player);
 		}
 	}
 }
@@ -3105,7 +3128,8 @@ void ProcessPlayers()
 void ClrPlrPath(Player &player)
 {
 	memset(player.walkpath, WALK_NONE, sizeof(player.walkpath));
-	memset(player.walkSegLen, 0, sizeof(player.walkSegLen));
+	// Diablo 2 mod: a new order replaces any movement in progress (the hero stops where they are)
+	player.freeMove.active = false;
 }
 
 /**
@@ -3147,22 +3171,8 @@ bool PosOkPlayer(const Player &player, Point position)
 
 void MakePlrPath(Player &player, Point targetPosition, bool endspace)
 {
-	if (player.position.future == targetPosition) {
-		return;
-	}
-
-	int path = FindPath([&player](Point position) { return PosOkPlayer(player, position); }, player.position.future, targetPosition, player.walkpath);
-	if (path == 0) {
-		return;
-	}
-
-	if (!endspace) {
-		path--;
-	}
-
-	path = d2::StraightenPath([&player](Point position) { return PosOkPlayer(player, position); }, player.position.future, player.walkpath, path, player.walkSegLen);
-
-	player.walkpath[path] = WALK_NONE;
+	// Diablo 2 mod: heroes move freely towards the target instead of stepping tile by tile
+	d2::FreeMoveSetTarget(player, targetPosition, 0, 0, endspace);
 }
 
 void CalcPlrStaff(Player &player)

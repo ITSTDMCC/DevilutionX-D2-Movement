@@ -20,6 +20,7 @@
 #include "automap.h"
 #include "config.h"
 #include "control.h"
+#include "d2mod.h"
 #include "dead.h"
 #include "engine/backbuffer_state.hpp"
 #include "engine/random.hpp"
@@ -177,6 +178,7 @@ string_view CmdIdString(_cmd_id cmd)
 	case CMD_OPENHIVE: return "CMD_OPENHIVE";
 	case CMD_OPENGRAVE: return "CMD_OPENGRAVE";
 	case CMD_SETRUN: return "CMD_SETRUN";
+	case CMD_WALKXY_FINE: return "CMD_WALKXY_FINE";
 	case FAKE_CMD_SETID: return "FAKE_CMD_SETID";
 	case FAKE_CMD_DROPID: return "FAKE_CMD_DROPID";
 	case CMD_INVALID: return "CMD_INVALID";
@@ -2343,6 +2345,17 @@ size_t OnSetReflect(const TCmd *pCmd, Player &player)
 	return sizeof(message);
 }
 
+size_t OnWalkFine(const TCmd *pCmd, Player &player)
+{
+	const auto &message = *reinterpret_cast<const TCmdLocParam1 *>(pCmd);
+	const Point position { message.x, message.y };
+
+	if (gbBufferMsgs != 1 && player.isOnActiveLevel() && InDungeonBounds(position))
+		d2::OnWalkFine(player, position, SDL_SwapLE16(message.wParam1));
+
+	return sizeof(message);
+}
+
 size_t OnSetRun(const TCmd *pCmd, Player &player)
 {
 	const auto &message = *reinterpret_cast<const TCmdParam1 *>(pCmd);
@@ -3321,6 +3334,8 @@ size_t ParseCmd(size_t pnum, const TCmd *pCmd)
 		return OnSetReflect(pCmd, player);
 	case CMD_SETRUN:
 		return OnSetRun(pCmd, player);
+	case CMD_WALKXY_FINE:
+		return OnWalkFine(pCmd, player);
 	case CMD_NAKRUL:
 		return OnNakrul(pCmd);
 	case CMD_OPENHIVE:
