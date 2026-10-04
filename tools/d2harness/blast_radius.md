@@ -60,8 +60,8 @@ player movement state (positions, walk paths, the dPlayer grid, walk modes and c
 | Source/diablo.cpp | `GameLogic` | 1387 | yes |
 | Source/diablo.cpp | `InitKeymapActions` | 1601 | yes |
 | Source/diablo.cpp | `LeftMouseCmd` | 225 | yes |
-| Source/engine/demomode.cpp | `GetRunGameLoop` | 544 | no |
-| Source/engine/demomode.cpp | `NotifyGameLoopStart` | 705 | no |
+| Source/engine/demomode.cpp | `GetRunGameLoop` | 544 | yes |
+| Source/engine/demomode.cpp | `NotifyGameLoopStart` | 706 | yes |
 | Source/engine/render/scrollrt.cpp | `CalcFirstTilePosition` | 1008 | yes |
 | Source/engine/render/scrollrt.cpp | `DrawGame` | 1070 | yes |
 | Source/engine/render/scrollrt.cpp | `DrawPlayerHelper` | 748 | yes |

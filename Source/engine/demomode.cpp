@@ -543,6 +543,7 @@ bool IsRecording()
 
 bool GetRunGameLoop(bool &drawGame, bool &processInput)
 {
+	D2_PROBE_FN();
 	if (Demo_Message_Queue.empty()) {
 		if (d2::MovementEnabled()) {
 			// Diablo 2 mod: the recorded clicks steer a faster hero, so the recording's own way out of the game
@@ -704,6 +705,7 @@ void RecordMessage(const SDL_Event &event, uint16_t modState)
 
 void NotifyGameLoopStart()
 {
+	D2_PROBE_FN();
 	if (IsRecording()) {
 		const std::string path = StrCat(paths::PrefPath(), "demo_", RecordNumber, ".dmo");
 		DemoRecording = OpenFile(path.c_str(), "wb");
