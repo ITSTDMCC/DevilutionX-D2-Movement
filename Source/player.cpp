@@ -186,8 +186,12 @@ void StartWalk(Player &player, Direction dir, bool pmWillBeCalled)
 		return;
 	}
 
-	StartWalkAnimation(player, dir, pmWillBeCalled);
+	// The sprite faces along the straightened path while the step itself may go to either neighbouring direction
+	const Direction facing = d2::WalkFacing(player);
+	StartWalkAnimation(player, facing, pmWillBeCalled);
 	HandleWalkMode(player, dir);
+	if (player.isWalking())
+		player.tempDirection = facing;
 }
 
 void ClearStateVariables(Player &player)
@@ -3146,6 +3150,8 @@ void MakePlrPath(Player &player, Point targetPosition, bool endspace)
 	if (!endspace) {
 		path--;
 	}
+
+	path = d2::StraightenPath([&player](Point position) { return PosOkPlayer(player, position); }, player.position.future, player.walkpath, path);
 
 	player.walkpath[path] = WALK_NONE;
 }

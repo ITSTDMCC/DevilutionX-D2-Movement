@@ -8,6 +8,12 @@
 
 #include <cstdint>
 
+#include <function_ref.hpp>
+
+#include "engine/direction.hpp"
+#include "engine/path.h"
+#include "engine/point.hpp"
+
 namespace devilution {
 
 struct Player;
@@ -62,6 +68,30 @@ bool PlayerFlinches(const Player &player, int dam);
 
 /** @brief Should this hit put the monster into hit recovery? @p dam is in 1/64 HP units. */
 bool MonsterFlinches(const Monster &monster, int dam);
+
+/** How many upcoming steps decide which way the hero faces while walking a straightened path. */
+constexpr int WalkFacingLookahead = 8;
+
+/**
+ * @brief Replace stretches of an A* path with straight lines where nothing blocks them, so the hero
+ * moves along the true line to the target (mixing the two nearest of the 8 step directions) instead of
+ * doglegging diagonally and then straight.
+ * @param posOk Same check the path finder used for each tile
+ * @param start Tile the path starts from
+ * @param path Step codes (WALK_*), rewritten in place
+ * @param length Number of steps in @p path
+ * @return New number of steps (never more than @p length)
+ */
+int StraightenPath(tl::function_ref<bool(Point)> posOk, Point start, int8_t path[MaxPathLength], int length);
+
+/** @brief Tile displacement for a WALK_* step code. */
+Displacement WalkStepDisplacement(int8_t step);
+
+/**
+ * @brief Direction the hero's sprite should face while walking: towards a point a few steps ahead,
+ * so the sprite holds steady while the steps alternate between two directions.
+ */
+Direction WalkFacing(const Player &player);
 
 /** @brief Toggle between walking and running (Diablo 2's R key). */
 void ToggleRun();
