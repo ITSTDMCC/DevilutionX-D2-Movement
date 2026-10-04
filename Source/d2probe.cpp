@@ -2,6 +2,9 @@
  * @file d2probe.cpp
  *
  * Probe counters, event log and invariant checks for the Diablo 2 movement mod (see d2probe.h).
+ *
+ * Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+ * Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
  */
 #include "d2probe.h"
 

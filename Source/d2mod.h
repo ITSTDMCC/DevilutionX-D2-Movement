@@ -3,6 +3,9 @@
  *
  * Diablo 2 style movement and combat rules layered on top of the Diablo 1 engine.
  * All tuning values for the mod live here.
+ *
+ * Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+ * Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
  */
 #pragma once
 

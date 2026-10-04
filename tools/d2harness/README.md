@@ -7,13 +7,26 @@ which has to draw frames to measure them (it opens a game window briefly and clo
 
 | Script | What it does | Hard limit |
 |---|---|---|
-| `build.ps1 -BuildDir <dir> [-Testing] [-Targets ...]` | Configure + build with VS 2022, reusing the dependency sources already in `build/` and `build-tests/` (no downloads). `-Testing` builds without LTO, which MSVC needs for tests. | configure 15 min, build 60 min, script `-MaxMinutes` (45) |
+| `build.ps1 -BuildDir <dir> [-Testing] [-Targets ...]` | Configure + build with VS 2022, reusing dependency sources already fetched into `build/` or `build-tests/` (otherwise CMake downloads them). `-Testing` builds without LTO, which MSVC needs for tests. | configure 15 min, build 60 min, script `-MaxMinutes` (45) |
 | `run_harness.ps1` | Runs every check below, then `filter_probes.py`. Output in `runs/<timestamp>/` (`summary.md`, `results.json`, all logs). | per step (below), script `-MaxMinutes` (60) |
 | `filter_probes.py <run>` | Turns test XML, probe logs and benchmark numbers into pass/fail. | 120 s |
 | `blast_radius.py [out.md] [--insert-probes]` | Maps touched and movement-dependent functions (`blast_radius.md`); `--insert-probes` adds `D2_PROBE_FN();` to any of them that lack a probe. | 120 s |
-| `package.ps1` | Copies the exe to `Diablo 1\devilutionx-d2movement\` and hard links the game MPQs next to it. | 5 min |
+| `package.ps1` | Copies the exe to a play folder outside the repository and hard links your MPQs next to it. | 5 min |
 
 Every script has a watchdog that kills it and its child processes at the limit; nothing can run forever.
+
+## Your own files
+
+The harness never ships or commits game files. Point it at your own copies with parameters,
+`D2H_<Name>` environment variables, or a git-ignored `local.psd1` (copy `local.example.psd1`):
+
+| Setting | What |
+|---|---|
+| `DataDir` | Folder with your `DIABDAT.MPQ` and `devilutionx.mpq` |
+| `D2CommonDll` | Your Diablo 2 1.12 `D2Common.dll` (reference for the direction table checks) |
+| `StockExe` | A stock 1.5.3 build for the FPS baseline |
+| `OutDir` | Play folder for `package.ps1`, outside the repository |
+| `CMake` | cmake.exe, if it is not on PATH |
 
 ## Exit codes (all scripts)
 

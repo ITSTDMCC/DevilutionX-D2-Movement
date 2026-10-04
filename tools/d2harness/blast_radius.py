@@ -1,8 +1,10 @@
+# Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+# Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
 """Map the blast radius of the Diablo 2 movement mod.
 
 Source side: every function changed since the 1.5.3 tag (touched), every function that reads or
 drives player movement state (affected), and whether each carries a D2_PROBE.
-Binary side: the gamedb index of the stock 1.5.3 exe (Diablo 1/devilutionx/decompiled/.gamedb),
+Binary side (optional): a gamedb index of the stock 1.5.3 exe, path in the D2H_GAMEDB environment variable,
 counting decompiled functions per touched module and the callers that reach them from other modules.
 
 Usage: python blast_radius.py [out.md] [--insert-probes]
@@ -20,7 +22,8 @@ threading.Timer(120, lambda: os._exit(124)).start()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.abspath(os.path.join(HERE, '..', '..'))
-GAMEDB = os.path.abspath(os.path.join(SRC, '..', 'devilutionx', 'decompiled', '.gamedb', 'index.sqlite'))
+# Optional: a gamedb index of the stock exe (github.com/smileybaal/gamedb), given by the D2H_GAMEDB variable
+GAMEDB = os.environ.get('D2H_GAMEDB', '')
 
 # Reads or writes of player movement state
 MOVEMENT = re.compile(r'(\bplayer\.position\.|\bmyPlayer\.position\.|MyPlayer->position\.|Players\[[^\]]+\]\.position\.|'
@@ -137,7 +140,7 @@ def main():
            '| File | Function | Line | Refs | Probe |', '|---|---|---|---|---|']
     md += [f'| {f} | `{fn}` | {ln} | {h} | {"yes" if p else "-"} |' for f, fn, ln, p, h in sorted(affected, key=lambda a: (-a[4], a[0], a[1]))]
 
-    if os.path.exists(GAMEDB):
+    if GAMEDB and os.path.exists(GAMEDB):
         db = sqlite3.connect(GAMEDB)
         modules = {}
         for addr, name, module in db.execute('select address, name, module from port_module_assignment'):
@@ -154,7 +157,7 @@ def main():
             callers = {src for src, dst in db.execute('select src_id, dst_id from edges') if dst in members and by_id.get(src) != mod}
             md.append(f'| {mod} | {len(members)} | {len(callers)} |')
     else:
-        md += ['', f'(gamedb index not found at {GAMEDB}; binary side skipped)']
+        md += ['', '(no gamedb index given in D2H_GAMEDB; binary side skipped)']
 
     open(out_path, 'w', encoding='utf-8').write('\n'.join(md) + '\n')
     print(f'touched={len(touched)} affected={len(affected)} probed_affected={probed_aff} -> {out_path}')

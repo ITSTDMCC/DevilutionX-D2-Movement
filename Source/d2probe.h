@@ -7,6 +7,9 @@
  * hashes and a counter dump there for tools/d2harness to filter into pass/fail.
  *
  * Counting is a single increment, and nothing here changes game state, so probes are always compiled in.
+ *
+ * Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+ * Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
  */
 #pragma once
 

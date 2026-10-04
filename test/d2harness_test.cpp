@@ -5,6 +5,9 @@
  *
  * Environment (set by tools/d2harness/run_harness.ps1):
  *   D2_COMMON_DLL  path to Diablo 2 1.12 D2Common.dll, for checking the tangent table byte for byte
+ *
+ * Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+ * Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
  */
 #include <gtest/gtest.h>
 

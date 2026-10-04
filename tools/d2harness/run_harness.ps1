@@ -1,3 +1,5 @@
+# Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+# Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
 <#
 .SYNOPSIS
   Non-visual test harness for the Diablo 2 movement mod. Runs the headless parity/collision tests,
@@ -6,9 +8,13 @@
 
 .PARAMETER BuildDir      Mod release build, the exe that ships (default: build-d2parity).
 .PARAMETER TestBuildDir  Mod build with the tests (default: build-d2parity-tests; MSVC test builds have no LTO).
-.PARAMETER StockExe      Pristine 1.5.3 exe for the FPS baseline (default: ..\stock-1.5.3-src\build-stock\Release\devilutionx.exe).
-.PARAMETER DataDir       Folder with DIABDAT.MPQ (default: ..\devilutionx).
-.PARAMETER D2CommonDll   Diablo 2 1.12 D2Common.dll, the movement reference (default: ..\..\Diablo 2\binaries\PC\D2Common.dll).
+.PARAMETER DataDir       Folder with your own DIABDAT.MPQ and devilutionx.mpq (setting DataDir). Required.
+.PARAMETER D2CommonDll   Your Diablo 2 1.12 D2Common.dll, the movement reference (setting D2CommonDll). Without it the
+                         two table checks are skipped and reported as failures.
+.PARAMETER StockExe      Pristine 1.5.3 exe for the FPS baseline (setting StockExe; build one with
+                         build.ps1 -SourceDir <git archive of tag 1.5.3>). Required when BenchRuns > 0.
+
+Settings not given as parameters come from environment variables D2H_<Name> or tools\d2harness\local.psd1.
 .PARAMETER BenchRuns     Timedemo runs per build for the FPS benchmark (best run counts). 0 skips the benchmark.
 .PARAMETER MaxMinutes    Hard limit for the whole script (default 60).
 
@@ -28,9 +34,10 @@ param(
 Start-Watchdog $MaxMinutes
 
 if (-not $BuildDir) { $BuildDir = Join-Path $Script:RepoDir 'build-d2parity' }
-if (-not $StockExe) { $StockExe = Join-Path $Script:Diablo1Dir 'stock-1.5.3-src\build-stock\Release\devilutionx.exe' }
-if (-not $DataDir) { $DataDir = Join-Path $Script:Diablo1Dir 'devilutionx' }
-if (-not $D2CommonDll) { $D2CommonDll = Join-Path $Script:Diablo1Dir '..\Diablo 2\binaries\PC\D2Common.dll' }
+$StockExe = Get-Setting 'StockExe' $StockExe
+$DataDir = Get-Setting 'DataDir' $DataDir
+$D2CommonDll = Get-Setting 'D2CommonDll' $D2CommonDll
+if (-not $DataDir) { Write-Step 'DataDir not set: pass -DataDir, set D2H_DataDir or add it to local.psd1'; Stop-Watchdog; exit $Script:ExitMissingPrereq }
 if (-not $TestBuildDir) { $TestBuildDir = Join-Path $Script:RepoDir 'build-d2parity-tests' }
 $bin = Join-Path $TestBuildDir 'Release'
 $modExe = Join-Path $BuildDir 'Release\devilutionx.exe'
@@ -44,8 +51,8 @@ foreach ($f in 'd2harness_test.exe', 'd2demo_test.exe', 'd2mod_test.exe', 'd2gli
 if (-not (Test-Path (Join-Path $DataDir 'DIABDAT.MPQ'))) { $missing += 'DIABDAT.MPQ' }
 if (-not $python) { $missing += 'python' }
 if ($missing.Count -gt 0) { Write-Step "missing: $($missing -join ', ')"; Stop-Watchdog; exit $Script:ExitMissingPrereq }
-if (-not (Test-Path $D2CommonDll)) { Write-Step "D2Common.dll not found: parity reference tests will be skipped (and fail)" }
-if ($BenchRuns -gt 0 -and -not (Test-Path $StockExe)) { Write-Step "stock exe not found: $StockExe"; Stop-Watchdog; exit $Script:ExitMissingPrereq }
+if (-not $D2CommonDll -or -not (Test-Path $D2CommonDll)) { Write-Step "D2Common.dll not found: parity reference tests will be skipped (and fail)" }
+if ($BenchRuns -gt 0 -and (-not $StockExe -or -not (Test-Path $StockExe))) { Write-Step "stock exe not found: $StockExe"; Stop-Watchdog; exit $Script:ExitMissingPrereq }
 
 # The tests look for the game data next to themselves: hard link (no copy, no change to the original)
 foreach ($mpq in 'DIABDAT.MPQ', 'devilutionx.mpq') {
@@ -74,7 +81,7 @@ function Find-Errors($Text) {
 }
 
 # 1. Headless scenario tests (parity, collision, stock mode, probes)
-$env1 = @{ D2_COMMON_DLL = $D2CommonDll; D2PROBE_LOG = (Join-Path $run 'probe_harness.log') }
+$env1 = @{ D2_COMMON_DLL = [string]$D2CommonDll; D2PROBE_LOG = (Join-Path $run 'probe_harness.log') }
 $r = Invoke-Bounded -FilePath (Join-Path $bin 'd2harness_test.exe') -ArgumentList @("--gtest_output=xml:$(Join-Path $run 'd2harness.xml')") -TimeoutSeconds 300 -LogFile (Join-Path $run 'd2harness.log') -WorkingDirectory $bin -Environment $env1
 Add-StepResult 'harness' $r
 $r = Invoke-Bounded -FilePath (Join-Path $bin 'd2mod_test.exe') -ArgumentList @("--gtest_output=xml:$(Join-Path $run 'd2mod.xml')") -TimeoutSeconds 120 -LogFile (Join-Path $run 'd2mod.log') -WorkingDirectory $bin

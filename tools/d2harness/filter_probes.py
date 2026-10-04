@@ -1,3 +1,5 @@
+# Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+# Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
 """Filter D2 movement harness output into pass/fail.
 
 Reads the run folder written by run_harness.ps1 (gtest XML, probe logs, benchmark timings) and

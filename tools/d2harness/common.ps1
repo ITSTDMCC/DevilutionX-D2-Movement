@@ -1,3 +1,5 @@
+# Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+# Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
 # Shared helpers for the D2 movement harness scripts (dot-source this file).
 #
 # Exit codes used by every harness script (see README.md):
@@ -19,8 +21,28 @@ $Script:ExitTimeout = 124
 
 $Script:HarnessDir = $PSScriptRoot
 $Script:RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$Script:Diablo1Dir = (Resolve-Path (Join-Path $Script:RepoDir '..')).Path
-$Script:CMakeExe = 'C:\Program Files\CMake\bin\cmake.exe'
+
+# Machine-specific locations (game data, Diablo 2 reference, stock baseline, output folder) are never
+# hard coded. Each script takes them as parameters; otherwise they come from an environment variable,
+# otherwise from tools\d2harness\local.psd1 (git-ignored; copy local.example.psd1 to start one).
+$Script:LocalSettings = @{}
+$localFile = Join-Path $PSScriptRoot 'local.psd1'
+if (Test-Path $localFile) { $Script:LocalSettings = Import-PowerShellDataFile $localFile }
+
+# Value of a setting: explicit parameter, then environment variable D2H_<Name>, then local.psd1, else $null.
+function Get-Setting([string]$Name, [string]$Given) {
+	if ($Given) { return $Given }
+	$fromEnv = [Environment]::GetEnvironmentVariable("D2H_$Name")
+	if ($fromEnv) { return $fromEnv }
+	if ($Script:LocalSettings.ContainsKey($Name)) { return [string]$Script:LocalSettings[$Name] }
+	return $null
+}
+
+$Script:CMakeExe = Get-Setting 'CMake' $null
+if (-not $Script:CMakeExe) {
+	$found = Get-Command cmake -ErrorAction SilentlyContinue
+	$Script:CMakeExe = if ($found) { $found.Source } else { Join-Path $env:ProgramFiles 'CMake\bin\cmake.exe' }
+}
 
 function Write-Step([string]$Message) {
 	Write-Host ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $Message)

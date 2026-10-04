@@ -1,7 +1,9 @@
+# Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+# Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
 <#
 .SYNOPSIS
-  Configure and build a DevilutionX tree with Visual Studio 2022, reusing the dependency sources
-  already fetched by the existing build/ and build-tests/ folders (nothing is downloaded).
+  Configure and build a DevilutionX tree with Visual Studio 2022, reusing any dependency sources
+  already fetched into build/ or build-tests/ (otherwise CMake downloads them as usual).
 
 .PARAMETER SourceDir   Tree to build (default: this repository).
 .PARAMETER BuildDir    New build folder. Existing build/ and build-tests/ are never touched.
@@ -22,20 +24,22 @@ param(
 if (-not $SourceDir) { $SourceDir = $Script:RepoDir }
 Start-Watchdog $MaxMinutes
 
-if (-not (Test-Path $Script:CMakeExe)) { Write-Step "cmake not found at $($Script:CMakeExe)"; Stop-Watchdog; exit $Script:ExitMissingPrereq }
+if (-not (Test-Path $Script:CMakeExe)) { Write-Step "cmake not found at $($Script:CMakeExe) (put it on PATH or set D2H_CMake)"; Stop-Watchdog; exit $Script:ExitMissingPrereq }
 
-# Dependency sources from the earlier builds (read-only use via FETCHCONTENT_SOURCE_DIR_*)
+# Reuse dependency sources an earlier build in build/ or build-tests/ already fetched (read-only, via
+# FETCHCONTENT_SOURCE_DIR_*), so nothing is downloaded again. With none of them, CMake fetches as usual.
 $depRoots = @((Join-Path $Script:RepoDir 'build-tests\_deps'), (Join-Path $Script:RepoDir 'build\_deps'))
-$depArgs = @('-DFETCHCONTENT_FULLY_DISCONNECTED=ON')
+$depArgs = @()
+$allFound = $true
 foreach ($dep in 'asio', 'bzip2', 'find_steam_game', 'googletest', 'libfmt', 'libmpq', 'libpng', 'libsmackerdec', 'libsodium', 'sdl2', 'sdl_audiolib', 'sdl_image', 'simpleini', 'zlib') {
 	$found = $depRoots | ForEach-Object { Join-Path $_ "$dep-src" } | Where-Object { Test-Path $_ } | Select-Object -First 1
-	if (-not $found) {
-		if ($dep -eq 'googletest' -and -not $Testing) { continue }
-		Write-Step "dependency source $dep-src not found in build/ or build-tests/"
-		Stop-Watchdog; exit $Script:ExitMissingPrereq
+	if ($found) {
+		$depArgs += "-DFETCHCONTENT_SOURCE_DIR_$($dep.ToUpper())=$($found -replace '\\', '/')"
+	} elseif ($dep -ne 'googletest' -or $Testing) {
+		$allFound = $false
 	}
-	$depArgs += "-DFETCHCONTENT_SOURCE_DIR_$($dep.ToUpper())=$($found -replace '\\', '/')"
 }
+if ($allFound) { $depArgs += '-DFETCHCONTENT_FULLY_DISCONNECTED=ON' } else { Write-Step 'some dependency sources not found locally; CMake will download them' }
 
 New-Item -ItemType Directory -Force $BuildDir | Out-Null
 $configureArgs = @('-S', $SourceDir, '-B', $BuildDir, '-G', 'Visual Studio 17 2022', '-A', 'x64',

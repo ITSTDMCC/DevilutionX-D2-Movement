@@ -1,13 +1,13 @@
 # Diablo 2 movement in Diablo 1: results
 
-**Play:** double-click `Diablo 1\devilutionx-d2movement\devilutionx.exe`.
-Branch `d2-movement-parity` in `Diablo 1\devilutionX-src` (local only, not pushed).
+**Play:** build `devilutionx.exe`, put it next to your own `DIABDAT.MPQ` (or run `package.ps1`), and double-click it.
+Results below are from the harness run on 2026-10-04 (Windows 10, VS 2022, branch `d2-movement-parity`).
 
 ## Verdict: 65/65 harness checks pass
 
 | Benchmark | Result | Evidence |
 |---|---|---|
-| Movement parity with D2 | Travel time within **0.019%** of Diablo 2 in 16 directions, walking and running | D2's 128-entry direction table read from your `D2Common.dll` 1.12 (file offset 0x8c660) matches the port byte for byte; 40,401 headings identical to a reference written from D2Common; in the real game the average run speed is 89.5 of D2's 90 units per tick |
+| Movement parity with D2 | Travel time within **0.019%** of Diablo 2 in 16 directions, walking and running | D2's 128-entry direction table read from Diablo 2 1.12's `D2Common.dll` (file offset 0x8c660) matches the port byte for byte; 40,401 headings identical to a reference written from D2Common; in the real game the average run speed is 89.5 of D2's 90 units per tick |
 | No errors | 0 invariant failures over full demo replays in both modes; no error lines in any test or game output | Per-tick probes check grid, walls, monster overlap, speed cap, moving outside the stand state |
 | FPS | Stock movement: **99.9%** of a pristine 1.5.3 build (1,371 vs 1,373 fps uncapped). D2 movement: **95.4%** over the same 1,200 frames | Timedemo with rendering and audio, best of 3 runs each |
 | Audio | Footsteps keep Diablo 1's rules (frames 0 and 4, walking only); sound calls fire in both modes | 32 footsteps over 16 tiles walking, 0 running, as stock |

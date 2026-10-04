@@ -7,6 +7,9 @@
  *   D2_DEMO_MODE=d2  Diablo 2 movement: the replayed clicks steer a faster hero, so the outcome
  *                    differs, but the game must run to the end with no probe invariant failures
  *   D2_DEMO_DIR      a scratch copy of test/fixtures/timedemo/WarriorLevel1to2 (the run writes saves there)
+ *
+ * Part of DevilutionX-D2-Movement. Copyright (c) 2026 the DevilutionX-D2-Movement contributors.
+ * Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
  */
 #include <gtest/gtest.h>
 
