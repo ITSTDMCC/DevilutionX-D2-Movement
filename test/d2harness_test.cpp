@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <vector>
@@ -1115,6 +1116,37 @@ TEST_F(D2Harness, HitMonstersEaseBackInsteadOfJumping)
 	d2::BeginMonsterHitSlide(monster);
 	EXPECT_EQ(d2::MonsterHitSlideOffset(monster, 0), Displacement {}) << "stock mode must draw monsters exactly as before";
 	sgOptions.Gameplay.d2Movement.SetValue(true);
+}
+
+TEST_F(D2Harness, MovementReportHotkeyWritesTheLastSeconds)
+{
+	ClearLevel();
+	leveltype = DTYPE_CATHEDRAL;
+	Player &player = SetupHero(Start, false);
+	d2::FreeMoveSetTarget(player, Start + Displacement { 5, 2 }, 0, 0, true);
+	for (int tick = 0; tick < 40; tick++) {
+		ProcessPlayers();
+		d2::RecordTrace();
+	}
+	const std::string dir = paths::PrefPath();
+	std::vector<std::string> before;
+	for (const auto &entry : std::filesystem::directory_iterator(dir))
+		before.push_back(entry.path().filename().string());
+	d2::WriteMovementReport();
+	std::string report;
+	for (const auto &entry : std::filesystem::directory_iterator(dir)) {
+		const std::string name = entry.path().filename().string();
+		if (name.rfind("d2movement-report-", 0) == 0 && std::find(before.begin(), before.end(), name) == before.end())
+			report = entry.path().string();
+	}
+	ASSERT_FALSE(report.empty()) << "no report file written in " << dir;
+	std::ifstream in(report);
+	int lines = 0;
+	std::string line;
+	while (std::getline(in, line))
+		lines++;
+	std::printf("REPORT %d lines\n", lines);
+	EXPECT_GT(lines, 40);
 }
 
 TEST_F(D2Harness, WallsAreNeverEntered)

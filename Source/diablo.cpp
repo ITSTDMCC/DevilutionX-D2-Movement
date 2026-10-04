@@ -1392,6 +1392,7 @@ void GameLogic()
 	}
 	d2::UpdateLocalRunState();
 	d2probe::CheckTick();
+	d2::RecordTrace();
 	if (gbProcessPlayers) {
 		gGameLogicStep = GameLogicStep::ProcessPlayers;
 		ProcessPlayers();
@@ -1651,6 +1652,14 @@ void InitKeymapActions()
 	    N_("Use mana potions from belt."),
 	    SDLK_UNKNOWN,
 	    [] { UseBeltItem(BLT_MANA); },
+	    nullptr,
+	    CanPlayerTakeAction);
+	sgOptions.Keymapper.AddAction(
+	    "D2MovementReport",
+	    N_("Movement report"),
+	    N_("Diablo 2 movement: save the last 10 seconds of movement to a report file in the save folder, for when something looked wrong."),
+	    'K',
+	    d2::WriteMovementReport,
 	    nullptr,
 	    CanPlayerTakeAction);
 	sgOptions.Keymapper.AddAction(

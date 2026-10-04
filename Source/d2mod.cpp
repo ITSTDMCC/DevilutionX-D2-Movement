@@ -30,6 +30,8 @@
 #include "multi.h"
 #include "options.h"
 #include "player.h"
+#include "plrmsg.h"
+#include <ctime>
 #include "utils/paths.h"
 #include "qol/autopickup.h"
 #include "utils/stdcompat/algorithm.hpp"
@@ -1276,6 +1278,131 @@ bool MonsterFlinches(const Monster &monster, int dam)
 	if (dam <= 0)
 		return false;
 	return dam >= monster.maxHitPoints / MonsterHitRecoveryDivisor;
+}
+
+namespace {
+
+struct TraceMonster {
+	int16_t id = -1;
+	Point tile;
+	Point future;
+	int8_t mode = 0;
+	int8_t slideTicks = 0;
+	Displacement slide;
+};
+
+struct TraceEntry {
+	uint32_t tick = 0;
+	Point tile;
+	int16_t subX = 0;
+	int16_t subY = 0;
+	int8_t mode = 0;
+	int8_t facing = 0;
+	bool active = false;
+	bool handover = false;
+	bool walking = false;
+	Point goal;
+	TraceMonster monsters[3];
+};
+
+constexpr int TraceLength = 200; // 10 seconds
+TraceEntry Trace[TraceLength];
+int TraceNext = 0;
+uint32_t TraceTick = 0;
+
+} // namespace
+
+void RecordTrace()
+{
+	if (!MovementEnabled() || MyPlayer == nullptr)
+		return;
+	const Player &player = *MyPlayer;
+	const FreeMoveState &move = player.freeMove;
+	TraceEntry &e = Trace[TraceNext];
+	TraceNext = (TraceNext + 1) % TraceLength;
+	e = {};
+	e.tick = TraceTick++;
+	e.tile = player.position.tile;
+	e.subX = static_cast<int16_t>(move.x - player.position.tile.x * SubTile);
+	e.subY = static_cast<int16_t>(move.y - player.position.tile.y * SubTile);
+	e.mode = static_cast<int8_t>(player._pmode);
+	e.facing = static_cast<int8_t>(player._pdir);
+	e.active = move.active;
+	e.handover = move.handover;
+	e.walking = player.isWalking();
+	e.goal = TileOf(move.goalX, move.goalY);
+	// The three nearest monsters within 8 tiles
+	int found = 0;
+	for (int radius = 0; radius <= 8 && found < 3; radius++) {
+		for (size_t i = 0; i < ActiveMonsterCount && found < 3; i++) {
+			const Monster &monster = Monsters[ActiveMonsters[i]];
+			const Point mt { monster.position.tile.x, monster.position.tile.y };
+			if (mt.WalkingDistance(player.position.tile) != radius)
+				continue;
+			TraceMonster &m = e.monsters[found++];
+			m.id = static_cast<int16_t>(ActiveMonsters[i]);
+			m.tile = mt;
+			m.future = Point { monster.position.future.x, monster.position.future.y };
+			m.mode = static_cast<int8_t>(monster.mode);
+			m.slideTicks = monster.d2HitSlideTicks;
+			m.slide = monster.d2HitSlide;
+		}
+	}
+}
+
+void WriteMovementReport()
+{
+	if (!MovementEnabled() || MyPlayer == nullptr)
+		return;
+	char stamp[32];
+	const std::time_t now = std::time(nullptr);
+	std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));
+	const std::string path = paths::PrefPath() + "d2movement-report-" + stamp + ".txt";
+	std::FILE *file = std::fopen(path.c_str(), "w");
+	if (file == nullptr)
+		return;
+	const Player &player = *MyPlayer;
+	std::fprintf(file, "Diablo 2 movement report %s | level %d type %d | hero tile (%d,%d)\n", stamp, currlevel, static_cast<int>(leveltype), player.position.tile.x, player.position.tile.y);
+	std::fputs("Map around the hero now (H hero, # solid, O object, M monster, P other hero, . free):\n", file);
+	for (int dy = -6; dy <= 6; dy++) {
+		std::fputs("    ", file);
+		for (int dx = -6; dx <= 6; dx++) {
+			const Point p = player.position.tile + Displacement { dx, dy };
+			char c = '.';
+			if (!InDungeonBounds(p))
+				c = ' ';
+			else if (p == player.position.tile)
+				c = 'H';
+			else if (dMonster[p.x][p.y] != 0)
+				c = 'M';
+			else if (dPlayer[p.x][p.y] != 0)
+				c = 'P';
+			else if (IsTileSolid(p))
+				c = '#';
+			else if (!IsTileWalkable(p))
+				c = 'O';
+			std::fputc(c, file);
+		}
+		std::fputc('\n', file);
+	}
+	std::fputs("Last 10 seconds, oldest first (tick: hero tile sub mode facing order | monsters: id tile->future mode slide):\n", file);
+	for (int i = 0; i < TraceLength; i++) {
+		const TraceEntry &e = Trace[(TraceNext + i) % TraceLength];
+		if (e.tick == 0 && i != TraceLength - 1 && e.tile == Point {})
+			continue;
+		std::fprintf(file, "%6u: (%d,%d) %+4d,%+4d m%d f%d %s%s%s goal(%d,%d) |", e.tick, e.tile.x, e.tile.y, e.subX, e.subY, e.mode, e.facing,
+		    e.active ? "moving" : "still", e.handover ? " stockwalk" : "", e.walking ? " PM_WALK" : "", e.goal.x, e.goal.y);
+		for (const TraceMonster &m : e.monsters) {
+			if (m.id < 0)
+				continue;
+			std::fprintf(file, " #%d (%d,%d)->(%d,%d) m%d", m.id, m.tile.x, m.tile.y, m.future.x, m.future.y, m.mode);
+			if (m.slideTicks > 0)
+				std::fprintf(file, " slide(%d,%d)x%d", m.slide.deltaX, m.slide.deltaY, m.slideTicks);
+		}
+		std::fputc('\n', file);
+	}
+	std::fclose(file);
+	EventPlrMsg("Movement report saved");
 }
 
 void ToggleRun()

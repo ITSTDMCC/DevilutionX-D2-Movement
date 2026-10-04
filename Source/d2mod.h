@@ -288,6 +288,15 @@ void SendWalkToCursor(bool force);
 /** @brief Apply a fine walk command (CMD_WALKXY_FINE). */
 void OnWalkFine(Player &player, Point tile, uint16_t packedFine);
 
+/** @brief Remember this tick (hero, order, nearby monsters) in a short ring buffer for movement reports. */
+void RecordTrace();
+
+/**
+ * @brief Write the last few seconds of the trace, plus a map of the surroundings, to
+ * d2movement-report-<time>.txt in the save folder (bound to K: "something looked wrong").
+ */
+void WriteMovementReport();
+
 /** @brief Toggle between walking and running (Diablo 2's R key). */
 void ToggleRun();
 
