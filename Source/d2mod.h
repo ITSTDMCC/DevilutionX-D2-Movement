@@ -264,6 +264,15 @@ void AnchorMissileVisuals(Missile &missile, Point src, Point dst);
  */
 Displacement MissileVisualOffset(const Missile &missile, int progress);
 
+/** Ticks a monster hit mid-step takes to ease back to its tile on screen. */
+constexpr int8_t MonsterHitSlideTicks = 4;
+
+/** @brief Remember where a walking monster was drawn just before a hit sends it back to its old tile. */
+void BeginMonsterHitSlide(Monster &monster);
+
+/** @brief Extra screen offset to draw a monster with while it eases back after a hit (zero otherwise). */
+Displacement MonsterHitSlideOffset(const Monster &monster, int progress);
+
 /** @brief Screen offset from the hero's tile centre to where they really are. */
 Displacement GlideCorrection(const Player &player);
 

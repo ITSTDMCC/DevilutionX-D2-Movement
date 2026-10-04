@@ -198,6 +198,12 @@ struct CMonster {
 extern CMonster LevelMonsterTypes[MaxLvlMTypes];
 
 struct Monster { // note: missing field _mAFNum
+	/**
+	 * Diablo 2 mod, drawing only: a monster hit mid-step goes back to the tile it was leaving (stock Diablo 1
+	 * rule). Instead of jumping there, it is drawn easing back from where it was over a few ticks.
+	 */
+	Displacement d2HitSlide;
+	int8_t d2HitSlideTicks = 0;
 	std::unique_ptr<uint8_t[]> uniqueMonsterTRN;
 	/**
 	 * @brief Contains information for current animation

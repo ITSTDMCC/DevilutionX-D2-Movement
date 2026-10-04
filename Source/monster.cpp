@@ -595,6 +595,8 @@ void NewMonsterAnim(Monster &monster, MonsterGraphic graphic, Direction md, Anim
 
 void StartMonsterGotHit(Monster &monster)
 {
+	// Diablo 2 mod: ease back on screen instead of jumping (drawing only; the rule itself is unchanged)
+	d2::BeginMonsterHitSlide(monster);
 	if (monster.type().type != MT_GOLEM) {
 		auto animationFlags = gGameLogicStep < GameLogicStep::ProcessMonsters ? AnimationDistributionFlags::ProcessAnimationPending : AnimationDistributionFlags::None;
 		int8_t numSkippedFrames = (gbIsHellfire && monster.type().type == MT_DIABLO) ? 4 : 0;
@@ -3998,6 +4000,8 @@ void ProcessMonsters()
 	assert(ActiveMonsterCount <= MaxMonsters);
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
 		Monster &monster = Monsters[ActiveMonsters[i]];
+		if (monster.d2HitSlideTicks > 0)
+			monster.d2HitSlideTicks--;
 		FollowTheLeader(monster);
 		if (gbIsMultiplayer) {
 			SetRndSeed(monster.aiSeed);

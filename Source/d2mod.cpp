@@ -25,6 +25,7 @@
 #include "lighting.h"
 #include "missiles.h"
 #include "monster.h"
+#include "engine/render/scrollrt.h"
 #include "msg.h"
 #include "multi.h"
 #include "options.h"
@@ -1075,6 +1076,37 @@ bool GamepadStep(const Player &player, Direction dir, Point &target)
 		}
 	}
 	return found;
+}
+
+void BeginMonsterHitSlide(Monster &monster)
+{
+	D2_PROBE_FN();
+	monster.d2HitSlide = {};
+	monster.d2HitSlideTicks = 0;
+	if (!MovementEnabled() || !monster.isWalking())
+		return;
+	// Where the walk is drawn right now (same rules as DrawMonsterHelper), relative to the tile it goes back to
+	Point drawTile { monster.position.tile.x, monster.position.tile.y };
+	Displacement offset = GetOffsetForWalking(monster.animInfo, monster.direction);
+	if (monster.mode == MonsterMode::MoveSideways && monster.direction == Direction::West) {
+		drawTile = Point { monster.position.future.x, monster.position.future.y };
+		offset -= Displacement { 64, 0 };
+	}
+	const Displacement slide = Displacement { drawTile.x - monster.position.old.x, drawTile.y - monster.position.old.y }.worldToScreen() + offset;
+	if (slide == Displacement {})
+		return;
+	monster.d2HitSlide = slide;
+	monster.d2HitSlideTicks = MonsterHitSlideTicks;
+}
+
+Displacement MonsterHitSlideOffset(const Monster &monster, int progress)
+{
+	if (monster.d2HitSlideTicks <= 0)
+		return {};
+	constexpr int Fraction = AnimationInfo::baseValueFraction;
+	const int64_t total = static_cast<int64_t>(MonsterHitSlideTicks) * Fraction;
+	const int64_t left = std::max<int64_t>(0, static_cast<int64_t>(monster.d2HitSlideTicks) * Fraction - progress);
+	return { static_cast<int>(monster.d2HitSlide.deltaX * left / total), static_cast<int>(monster.d2HitSlide.deltaY * left / total) };
 }
 
 void AnchorMissileVisuals(Missile &missile, Point src, Point dst)

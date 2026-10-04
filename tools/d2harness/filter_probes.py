@@ -152,6 +152,10 @@ def main():
         if m:
             check('gamepad: walks through doorways', m.group(2) == '0' and 'GamepadGoesThroughDoorways' not in failed_tests,
                   f'{m.group(1)} pushes at an open door from in front of it: {m.group(2)} stuck', 'parity')
+        m = re.search(r'HITSLIDE from \((-?\d+),(-?\d+)\) px back to its tile over (\d+) ticks', text)
+        if m:
+            check('monsters: hit mid-step ease back instead of jumping', 'HitMonstersEaseBackInsteadOfJumping' not in failed_tests,
+                  f'drawn from {m.group(1)},{m.group(2)} px, easing back over {m.group(3)} ticks (the stock rule itself is unchanged)', 'parity')
         m = re.search(r'GAMEPAD frames=(\d+) over 64 ticks, previews skipped=(\d+)', text)
         if m:
             check('gamepad: walk cycle keeps animating', 'GamepadWalkKeepsAnimating' not in failed_tests,

@@ -738,6 +738,9 @@ void DrawMonsterHelper(const Surface &out, Point tilePosition, Point targetBuffe
 			offset -= Displacement { 64, 0 };
 	} else if (isNegativeMonster) {
 		return;
+	} else {
+		// Diablo 2 mod: easing back after being hit mid-step (drawing only)
+		offset = d2::MonsterHitSlideOffset(monster, ProgressToNextGameTick);
 	}
 
 	const Point monsterRenderPosition { targetBufferPosition + offset - Displacement { CalculateWidth2(sprite.width()), 0 } };

@@ -29,6 +29,8 @@
 #include "lighting.h"
 #include "multi.h"
 #include "missiles.h"
+#include "monster.h"
+#include "engine/render/scrollrt.h"
 #include "objects.h"
 #include "options.h"
 #include "player.h"
@@ -1074,6 +1076,45 @@ TEST_F(D2Harness, GamepadGoesThroughDoorways)
 		}
 	}
 	std::printf("DOORS cases=%d stuck=%d\n", cases, failed);
+}
+
+TEST_F(D2Harness, HitMonstersEaseBackInsteadOfJumping)
+{
+	// A monster hit half-way through a step goes back to the tile it was leaving (stock rule, unchanged). It must
+	// be drawn starting from where it was and easing back over a few ticks, not jumping.
+	Monster monster {};
+	monster.position.old = { 40, 40 };
+	monster.position.tile = monster.position.future = { 41, 40 }; // stepping south-east: already counted on the new tile
+	monster.direction = Direction::SouthEast;
+	monster.mode = MonsterMode::MoveSouthwards;
+	monster.animInfo.setNewAnimation(std::nullopt, 8, 1);
+	for (int i = 0; i < 4; i++)
+		monster.animInfo.processAnimation();
+	const Displacement drawnBefore = Displacement { monster.position.tile.x - monster.position.old.x, monster.position.tile.y - monster.position.old.y }.worldToScreen()
+	    + GetOffsetForWalking(monster.animInfo, monster.direction);
+	d2::BeginMonsterHitSlide(monster);
+	// the stock snap back
+	monster.position.tile = monster.position.future = monster.position.old;
+	monster.mode = MonsterMode::HitRecovery;
+	ASSERT_NE(drawnBefore, Displacement {});
+	EXPECT_EQ(d2::MonsterHitSlideOffset(monster, 0), drawnBefore) << "monster jumped on the hit frame";
+	int moved = 0;
+	Displacement last = drawnBefore;
+	for (int tick = 0; tick < d2::MonsterHitSlideTicks; tick++) {
+		monster.d2HitSlideTicks--;
+		const Displacement now = d2::MonsterHitSlideOffset(monster, 0);
+		moved += std::abs(now.deltaX - last.deltaX) + std::abs(now.deltaY - last.deltaY);
+		last = now;
+	}
+	EXPECT_EQ(last, Displacement {}) << "monster did not finish easing back";
+	std::printf("HITSLIDE from (%d,%d) px back to its tile over %d ticks\n", drawnBefore.deltaX, drawnBefore.deltaY, static_cast<int>(d2::MonsterHitSlideTicks));
+
+	sgOptions.Gameplay.d2Movement.SetValue(false);
+	monster.position.tile = monster.position.future = { 41, 40 };
+	monster.mode = MonsterMode::MoveSouthwards;
+	d2::BeginMonsterHitSlide(monster);
+	EXPECT_EQ(d2::MonsterHitSlideOffset(monster, 0), Displacement {}) << "stock mode must draw monsters exactly as before";
+	sgOptions.Gameplay.d2Movement.SetValue(true);
 }
 
 TEST_F(D2Harness, WallsAreNeverEntered)
