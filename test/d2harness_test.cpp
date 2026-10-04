@@ -1031,6 +1031,51 @@ TEST_F(D2Harness, ArrowsLeaveTheBowAndLandOnTheTarget)
 	sgOptions.Gameplay.d2Movement.SetValue(true);
 }
 
+TEST_F(D2Harness, GamepadGoesThroughDoorways)
+{
+	// An open door in a wall that runs across the screen diagonally. Push the stick straight up, or up-right
+	// (straight at the doorway), from spots in front of it: the hero must end up through the door.
+	int cases = 0;
+	int failed = 0;
+	for (const Direction push : { Direction::North, Direction::NorthEast, Direction::East }) {
+		for (int sx = 44; sx <= 46; sx++) {
+			for (int sy = 41; sy <= 43; sy++) {
+				ClearLevel();
+				leveltype = DTYPE_CATHEDRAL;
+				for (int x = 30; x <= 60; x++)
+					if (x != 45)
+						Wall({ x, 40 });
+				Objects[0] = {};
+				Objects[0]._otype = OBJ_L1LDOOR;
+				Objects[0]._oSolidFlag = false; // open
+				Objects[0].position = { 45, 40 };
+				dObject[45][40] = 1;
+				Player &player = SetupHero({ sx, sy }, false);
+				// steer towards the doorway column first, as a player lines up with a door
+				int tick = 0;
+				for (; tick < 120 && player.position.tile.y >= 40; tick++) {
+					Point step;
+					const Direction dir = player.position.tile.x < 45 ? Direction::East : (player.position.tile.x > 45 ? Direction::North : push);
+					if (d2::GamepadStep(player, dir, step)) {
+						ClrPlrPath(player);
+						MakePlrPath(player, step, true);
+						player.destAction = ACTION_NONE;
+					}
+					ProcessPlayers();
+					d2probe::CheckTick();
+				}
+				cases++;
+				if (player.position.tile.y >= 40) {
+					failed++;
+					ADD_FAILURE() << "pushing " << static_cast<int>(push) << " from (" << sx << "," << sy << ") never got through the door; at ("
+					              << player.position.tile.x << "," << player.position.tile.y << ")";
+				}
+			}
+		}
+	}
+	std::printf("DOORS cases=%d stuck=%d\n", cases, failed);
+}
+
 TEST_F(D2Harness, WallsAreNeverEntered)
 {
 	ClearLevel();

@@ -248,6 +248,13 @@ void FreeMoveReset(Player &player);
 /** @brief Tile the hero is heading for. */
 Point FreeMoveTargetTile(const Player &player);
 
+/**
+ * @brief Tile a gamepad push should walk to. Like Diablo 2's analog movement, a push that is blocked (into a wall
+ * beside a doorway, past a corner) slides to whichever of the two neighbouring directions is open, so the hero
+ * glides through doorways and along walls instead of stopping. Returns false when every way is blocked.
+ */
+bool GamepadStep(const Player &player, Direction dir, Point &target);
+
 /** @brief Record where a new missile really leaves from / lands on (heroes standing off their tile centre). */
 void AnchorMissileVisuals(Missile &missile, Point src, Point dst);
 

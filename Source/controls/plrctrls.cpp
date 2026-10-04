@@ -1,4 +1,5 @@
 #include "controls/plrctrls.h"
+#include "d2mod.h"
 #include "d2probe.h"
 
 #include <algorithm>
@@ -1304,6 +1305,17 @@ void WalkInDir(size_t playerId, AxisDirection dir)
 	if (IsStandingGround()) {
 		if (player._pmode == PM_STAND)
 			StartStand(player, pdir);
+		return;
+	}
+
+	if (d2::MovementEnabled()) {
+		// Diablo 2 mod: analog-style pushing that slides past corners and into doorways
+		Point step;
+		if (d2::GamepadStep(player, pdir, step)) {
+			NetSendCmdLoc(playerId, true, CMD_WALKXY, step);
+		} else if (player._pmode == PM_STAND && !d2::FreeMoveActive(player)) {
+			StartStand(player, pdir);
+		}
 		return;
 	}
 

@@ -1054,6 +1054,29 @@ Displacement GlideCorrection(const Player &player)
 	return { (dx - dy) * 32 / SubTile, (dx + dy) * 16 / SubTile };
 }
 
+bool GamepadStep(const Player &player, Direction dir, Point &target)
+{
+	D2_PROBE_FN();
+	const Point from = player.position.future;
+	// Straight ahead if that is a legal step; otherwise the two directions either side of it, preferring the one
+	// that can keep going the same way afterwards (into and through a doorway rather than along the wall)
+	const Direction candidates[3] = { dir, Left(dir), Right(dir) };
+	bool found = false;
+	int bestScore = -1;
+	for (int i = 0; i < 3; i++) {
+		const Point step = from + candidates[i];
+		if (!CanCross(player, from, step))
+			continue;
+		const int score = (i == 0 ? 4 : 0) + (PosOkPlayer(player, step + candidates[i]) ? 2 : 0) + (PosOkPlayer(player, step + dir) ? 1 : 0);
+		if (score > bestScore) {
+			bestScore = score;
+			target = step;
+			found = true;
+		}
+	}
+	return found;
+}
+
 void AnchorMissileVisuals(Missile &missile, Point src, Point dst)
 {
 	D2_PROBE_FN();

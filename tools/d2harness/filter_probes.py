@@ -148,6 +148,10 @@ def main():
         if m:
             check('missiles: arrows drawn from the bow and onto the target', 'ArrowsLeaveTheBowAndLandOnTheTarget' not in failed_tests,
                   f'hero {m.group(1)},{m.group(2)} px off its tile centre; arrow drawn from there, landing on the target over {m.group(3)} ticks', 'parity')
+        m = re.search(r'DOORS cases=(\d+) stuck=(\d+)', text)
+        if m:
+            check('gamepad: walks through doorways', m.group(2) == '0' and 'GamepadGoesThroughDoorways' not in failed_tests,
+                  f'{m.group(1)} pushes at an open door from in front of it: {m.group(2)} stuck', 'parity')
         m = re.search(r'GAMEPAD frames=(\d+) over 64 ticks, previews skipped=(\d+)', text)
         if m:
             check('gamepad: walk cycle keeps animating', 'GamepadWalkKeepsAnimating' not in failed_tests,
