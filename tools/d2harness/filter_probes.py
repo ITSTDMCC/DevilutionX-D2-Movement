@@ -144,6 +144,10 @@ def main():
         if m:
             check('safety net: hands a stuck walk to stock Diablo 1 walking', 'SafetyNetHandsOverToStockWalking' not in failed_tests,
                   f'engaged {m.group(1)} time(s), stock walking took the hero home in {m.group(3)} ticks', 'parity')
+        m = re.search(r'ARROWS hero offset \((-?\d+),(-?\d+)\) px, flight (\d+) ticks', text)
+        if m:
+            check('missiles: arrows drawn from the bow and onto the target', 'ArrowsLeaveTheBowAndLandOnTheTarget' not in failed_tests,
+                  f'hero {m.group(1)},{m.group(2)} px off its tile centre; arrow drawn from there, landing on the target over {m.group(3)} ticks', 'parity')
         m = re.search(r'GAMEPAD frames=(\d+) over 64 ticks, previews skipped=(\d+)', text)
         if m:
             check('gamepad: walk cycle keeps animating', 'GamepadWalkKeepsAnimating' not in failed_tests,

@@ -21,6 +21,7 @@ namespace devilution {
 
 struct Player;
 struct Monster;
+struct Missile;
 
 namespace d2 {
 
@@ -246,6 +247,15 @@ void FreeMoveReset(Player &player);
 
 /** @brief Tile the hero is heading for. */
 Point FreeMoveTargetTile(const Player &player);
+
+/** @brief Record where a new missile really leaves from / lands on (heroes standing off their tile centre). */
+void AnchorMissileVisuals(Missile &missile, Point src, Point dst);
+
+/**
+ * @brief Extra screen offset to draw a missile with: the anchors blended over its flight.
+ * @param progress Fraction of the way to the next game tick (0..AnimationInfo::baseValueFraction)
+ */
+Displacement MissileVisualOffset(const Missile &missile, int progress);
 
 /** @brief Screen offset from the hero's tile centre to where they really are. */
 Displacement GlideCorrection(const Player &player);

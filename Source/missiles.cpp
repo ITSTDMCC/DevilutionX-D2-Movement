@@ -2798,6 +2798,8 @@ Missile *AddMissile(Point src, Point dst, Direction midir, MissileID mitype,
 	if (parameter.spellFizzled) {
 		return nullptr;
 	}
+	// Diablo 2 mod: draw it leaving the shooter's real spot (heroes stand off their tile centre); drawing only
+	d2::AnchorMissileVisuals(missile, src, parameter.dst);
 
 	return &missile;
 }
@@ -4207,6 +4209,8 @@ void ProcessMissiles()
 		const MissileData &missileData = GetMissileData(missile._mitype);
 		if (missileData.mProc != nullptr)
 			missileData.mProc(missile);
+		if (missile.d2Age < missile.d2FlightTicks)
+			missile.d2Age++;
 		if (missile._miAnimFlags == MissileGraphicsFlags::NotAnimated)
 			continue;
 

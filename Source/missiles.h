@@ -93,6 +93,15 @@ enum class MissileSource : uint8_t {
 };
 
 struct Missile {
+	/**
+	 * Diablo 2 mod, drawing only: heroes stand anywhere inside their tile, but missiles fly from and to tile
+	 * centres. The sprite is drawn shifted from the shooter's real spot (fading out over the flight) and towards
+	 * a target hero's real spot (fading in), so it visibly leaves the bow and lands on the target.
+	 */
+	Displacement d2StartOffset;
+	Displacement d2EndOffset;
+	int16_t d2FlightTicks = 0;
+	int16_t d2Age = 0;
 	/** Type of projectile */
 	MissileID _mitype;
 	MissilePosition position;

@@ -109,6 +109,8 @@ bool CouldMissileCollide(Point tile, bool checkPlayerAndMonster)
 	return IsMissileBlockedByTile(tile);
 }
 
+void UpdateMissileRendererDataStock(Missile &m);
+
 void UpdateMissilePositionForRendering(Missile &m, int progress)
 {
 	DisplacementOf<int64_t> velocity = m.position.velocity;
@@ -123,6 +125,13 @@ void UpdateMissilePositionForRendering(Missile &m, int progress)
 }
 
 void UpdateMissileRendererData(Missile &m)
+{
+	UpdateMissileRendererDataStock(m);
+	// Diablo 2 mod: shift the sprite from the shooter's real spot / onto a target hero's real spot (drawing only)
+	m.position.offsetForRendering += d2::MissileVisualOffset(m, ProgressToNextGameTick);
+}
+
+void UpdateMissileRendererDataStock(Missile &m)
 {
 	m.position.tileForRendering = m.position.tile;
 	m.position.offsetForRendering = m.position.offset;

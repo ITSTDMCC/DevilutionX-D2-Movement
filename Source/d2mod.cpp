@@ -23,6 +23,7 @@
 #include "engine/animationinfo.h"
 #include "levels/gendung.h"
 #include "lighting.h"
+#include "missiles.h"
 #include "monster.h"
 #include "msg.h"
 #include "multi.h"
@@ -1051,6 +1052,52 @@ Displacement GlideCorrection(const Player &player)
 	const int32_t dy = move.y - player.position.tile.y * SubTile;
 	// One tile is 64 pixels wide and 32 pixels high on screen
 	return { (dx - dy) * 32 / SubTile, (dx + dy) * 16 / SubTile };
+}
+
+void AnchorMissileVisuals(Missile &missile, Point src, Point dst)
+{
+	D2_PROBE_FN();
+	missile.d2StartOffset = {};
+	missile.d2EndOffset = {};
+	missile.d2FlightTicks = 0;
+	missile.d2Age = 0;
+	if (!MovementEnabled() || missile.IsTrap() || missile.position.velocity == Displacement {})
+		return;
+	// Shot by a hero standing on the start tile
+	if (InDungeonBounds(src) && dPlayer[src.x][src.y] > 0 && missile._micaster != TARGET_PLAYERS) {
+		const size_t shooter = static_cast<size_t>(dPlayer[src.x][src.y] - 1);
+		if (shooter < Players.size() && static_cast<int>(shooter) == missile._misource)
+			missile.d2StartOffset = GlideCorrection(Players[shooter]);
+	}
+	// Aimed at a hero standing on the target tile
+	if (InDungeonBounds(dst) && dPlayer[dst.x][dst.y] > 0) {
+		const size_t target = static_cast<size_t>(dPlayer[dst.x][dst.y] - 1);
+		if (target < Players.size())
+			missile.d2EndOffset = GlideCorrection(Players[target]);
+	}
+	if (missile.d2StartOffset == Displacement {} && missile.d2EndOffset == Displacement {})
+		return;
+	// How many ticks the flight takes: screen distance between the tile centres over the speed per tick
+	const Displacement screen = (dst - src).worldToScreen();
+	const int64_t distance = IntSqrt(static_cast<int64_t>(screen.deltaX) * screen.deltaX + static_cast<int64_t>(screen.deltaY) * screen.deltaY);
+	const int64_t vx = missile.position.velocity.deltaX >> 16;
+	const int64_t vy = missile.position.velocity.deltaY >> 16;
+	const int64_t speed = std::max<int64_t>(1, IntSqrt(vx * vx + vy * vy));
+	missile.d2FlightTicks = static_cast<int16_t>(clamp<int64_t>(distance / speed, 1, 60));
+}
+
+Displacement MissileVisualOffset(const Missile &missile, int progress)
+{
+	if (missile.d2FlightTicks <= 0)
+		return {};
+	constexpr int Fraction = AnimationInfo::baseValueFraction;
+	const int64_t elapsed = std::min<int64_t>(static_cast<int64_t>(missile.d2Age) * Fraction + progress, static_cast<int64_t>(missile.d2FlightTicks) * Fraction);
+	const int64_t total = static_cast<int64_t>(missile.d2FlightTicks) * Fraction;
+	const int64_t left = total - elapsed;
+	return {
+		static_cast<int>((missile.d2StartOffset.deltaX * left + missile.d2EndOffset.deltaX * elapsed) / total),
+		static_cast<int>((missile.d2StartOffset.deltaY * left + missile.d2EndOffset.deltaY * elapsed) / total),
+	};
 }
 
 void SetCursorFine(int32_t x, int32_t y)

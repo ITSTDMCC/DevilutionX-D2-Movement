@@ -28,6 +28,7 @@
 #include "levels/gendung.h"
 #include "lighting.h"
 #include "multi.h"
+#include "missiles.h"
 #include "objects.h"
 #include "options.h"
 #include "player.h"
@@ -984,6 +985,50 @@ TEST_F(D2Harness, FacingFollowsTheMouse)
 	}
 	std::printf("MOUSEFACING ticks=%d wrong=%d worst=%.1f\n", checked, wrong, worst);
 	EXPECT_GT(checked, 1000);
+}
+
+TEST_F(D2Harness, ArrowsLeaveTheBowAndLandOnTheTarget)
+{
+	// A hero standing off their tile centre shoots: the arrow must be drawn from where the hero really is and
+	// end on the monster; an arrow shot at that hero must end where the hero really is. Drawing only.
+	ClearLevel();
+	leveltype = DTYPE_CATHEDRAL;
+	Player &player = SetupHero(Start, false);
+	player.freeMove.valid = true;
+	player.freeMove.x = Start.x * 256 + 100;
+	player.freeMove.y = Start.y * 256 - 60;
+	const Displacement heroOffset = d2::GlideCorrection(player);
+	ASSERT_NE(heroOffset, Displacement {});
+	const Point monsterTile = Start + Displacement { 5, 2 };
+
+	Missile arrow {};
+	arrow._micaster = TARGET_MONSTERS;
+	arrow._misource = 0;
+	arrow.position.velocity = { 24 << 16, 8 << 16 };
+	d2::AnchorMissileVisuals(arrow, Start, monsterTile);
+	ASSERT_GT(arrow.d2FlightTicks, 0);
+	EXPECT_EQ(d2::MissileVisualOffset(arrow, 0), heroOffset) << "arrow not drawn at the bow";
+	arrow.d2Age = arrow.d2FlightTicks;
+	EXPECT_EQ(d2::MissileVisualOffset(arrow, 0), Displacement {}) << "arrow not drawn landing on the monster";
+
+	Missile incoming {};
+	incoming._micaster = TARGET_PLAYERS;
+	incoming._misource = 0;
+	incoming.position.velocity = { -24 << 16, -8 << 16 };
+	d2::AnchorMissileVisuals(incoming, monsterTile, Start);
+	ASSERT_GT(incoming.d2FlightTicks, 0);
+	EXPECT_EQ(d2::MissileVisualOffset(incoming, 0), Displacement {}) << "incoming arrow not drawn from the monster";
+	incoming.d2Age = incoming.d2FlightTicks;
+	EXPECT_EQ(d2::MissileVisualOffset(incoming, 0), heroOffset) << "incoming arrow not drawn landing on the hero";
+	std::printf("ARROWS hero offset (%d,%d) px, flight %d ticks\n", heroOffset.deltaX, heroOffset.deltaY, arrow.d2FlightTicks);
+
+	sgOptions.Gameplay.d2Movement.SetValue(false);
+	Missile stock {};
+	stock._micaster = TARGET_MONSTERS;
+	stock.position.velocity = { 24 << 16, 8 << 16 };
+	d2::AnchorMissileVisuals(stock, Start, monsterTile);
+	EXPECT_EQ(d2::MissileVisualOffset(stock, 0), Displacement {}) << "stock mode must draw missiles exactly as before";
+	sgOptions.Gameplay.d2Movement.SetValue(true);
 }
 
 TEST_F(D2Harness, WallsAreNeverEntered)
