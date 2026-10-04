@@ -11,6 +11,7 @@
 #include "control.h"
 #include "controls/plrctrls.h"
 #include "cursor.h"
+#include "d2mod.h"
 #include "dead.h"
 #ifdef _DEBUG
 #include "debug.h"
@@ -160,10 +161,15 @@ void HandleWalkMode(Player &player, Direction dir)
 	player._pmode = dirModeParams.walkMode;
 }
 
+bool IsPlayerRunning(const Player &player)
+{
+	return player.isRunning || (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0);
+}
+
 void StartWalkAnimation(Player &player, Direction dir, bool pmWillBeCalled)
 {
 	int8_t skippedFrames = -2;
-	if (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0)
+	if (IsPlayerRunning(player))
 		skippedFrames = 2;
 	if (pmWillBeCalled)
 		skippedFrames += 1;
@@ -412,6 +418,9 @@ void InitLevelChange(Player &player)
 		stream_stop();
 	}
 
+	// Make sure everyone on the level knows whether we are walking or running
+	d2::ShareRunState();
+
 	FixPlrWalkTags(player);
 	SetPlayerOld(player);
 	if (&player == MyPlayer) {
@@ -435,7 +444,7 @@ void InitLevelChange(Player &player)
 bool DoWalk(Player &player, int variant)
 {
 	// Play walking sound effect on certain animation frames
-	if (*sgOptions.Audio.walkingSound && (leveltype != DTYPE_TOWN || sgGameInitInfo.bRunInTown == 0)) {
+	if (*sgOptions.Audio.walkingSound && !IsPlayerRunning(player)) {
 		if (player.AnimInfo.currentFrame == 0
 		    || player.AnimInfo.currentFrame == 4) {
 			PlaySfxLoc(PS_WALK1, player.position.tile);
@@ -588,8 +597,8 @@ bool PlrHitMonst(Player &player, Monster &monster, bool adjacentDamage = false)
 		hit = 0;
 	}
 
-	hper += player.GetMeleePiercingToHit() - player.CalculateArmorPierce(monster.armorClass, true);
-	hper = clamp(hper, 5, 95);
+	hper += d2::PlayerMeleeChanceToHit(player, monster);
+	hper = d2::ClampChanceToHit(hper);
 
 	if (monster.tryLiftGargoyle())
 		return true;
@@ -752,8 +761,7 @@ bool PlrHitPlr(Player &attacker, Player &target)
 
 	int hit = GenerateRnd(100);
 
-	int hper = attacker.GetMeleeToHit() - target.GetArmor();
-	hper = clamp(hper, 5, 95);
+	int hper = d2::ClampChanceToHit(d2::PlayerVsPlayerChanceToHit(attacker, target, false));
 
 	int blk = 100;
 	if ((target._pmode == PM_STAND || target._pmode == PM_ATTACK) && target._pBlockFlag) {
@@ -2368,6 +2376,7 @@ void CreatePlayer(Player &player, HeroClass c)
 	player.pTownWarps = 0;
 	player.pLvlLoad = 0;
 	player.pManaShield = false;
+	player.isRunning = d2::RunByDefault;
 	player.pDamAcFlags = ItemSpecialEffectHf::None;
 	player.wReflections = 0;
 
@@ -2504,6 +2513,7 @@ void InitPlayer(Player &player, bool firstTime)
 		player.queuedSpell.spellType = player._pRSplType;
 		player.pManaShield = false;
 		player.wReflections = 0;
+		player.isRunning = d2::RunByDefault;
 	}
 
 	if (player.isOnActiveLevel()) {
@@ -2660,11 +2670,8 @@ void StartPlrHit(Player &player, int dam, bool forcehit)
 	player.Say(HeroSpeech::ArghClang);
 
 	RedrawComponent(PanelDrawComponent::Health);
-	if (player._pClass == HeroClass::Barbarian) {
-		if (dam >> 6 < player._pLevel + player._pLevel / 4 && !forcehit) {
-			return;
-		}
-	} else if (dam >> 6 < player._pLevel && !forcehit) {
+	// Diablo 2 hit recovery: only flinch when a single hit takes a real chunk of max life
+	if (!forcehit && !d2::PlayerFlinches(player, dam)) {
 		return;
 	}
 

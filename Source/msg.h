@@ -416,6 +416,11 @@ enum _cmd_id : uint8_t {
 	CMD_NAKRUL,
 	CMD_OPENHIVE,
 	CMD_OPENGRAVE,
+	// Diablo 2 mod: player switched between walking and running.
+	//
+	// body (TCmdParam1)
+	//    int16_t running
+	CMD_SETRUN,
 	// Fake command; set current player for succeeding mega pkt buffer messages.
 	//
 	// body (TFakeCmdPlr)

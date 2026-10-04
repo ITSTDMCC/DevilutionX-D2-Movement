@@ -371,6 +371,8 @@ struct Player {
 	uint8_t pDungMsgs;
 	uint8_t pLvlLoad;
 	bool pManaShield;
+	/** Diablo 2 mod: player is running instead of walking (not saved, synced with CMD_SETRUN). */
+	bool isRunning;
 	uint8_t pDungMsgs2;
 	bool pOriginalCathedral;
 	uint8_t pDiabloKillLevel;

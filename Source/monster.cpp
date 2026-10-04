@@ -16,6 +16,7 @@
 
 #include "control.h"
 #include "cursor.h"
+#include "d2mod.h"
 #include "dead.h"
 #include "engine/load_cl2.hpp"
 #include "engine/load_file.hpp"
@@ -1158,11 +1159,10 @@ void MonsterAttackPlayer(Monster &monster, Player &player, int hit, int minDam, 
 		ac += 40;
 	if (HasAnyOf(player.pDamAcFlags, ItemSpecialEffectHf::ACAgainstUndead) && monster.data().monsterClass == MonsterClass::Undead)
 		ac += 20;
-	hit += 2 * (monster.level(sgGameInitInfo.nDifficulty) - player._pLevel)
-	    + 30
-	    - ac;
+	hit = d2::MonsterChanceToHit(monster, player, hit, ac);
 	int minhit = GetMinHit();
 	hit = std::max(hit, minhit);
+	hit = std::min(hit, d2::MaxChanceToHit);
 	int blkper = 100;
 	if ((player._pmode == PM_STAND || player._pmode == PM_ATTACK) && player._pBlockFlag) {
 		blkper = GenerateRnd(100);
@@ -3665,9 +3665,13 @@ void M_StartHit(Monster &monster, int dam)
 			monster.goalVar1 = 0;
 			monster.goalVar2 = 0;
 		}
-		if (monster.mode != MonsterMode::Petrified) {
-			StartMonsterGotHit(monster);
-		}
+	}
+
+	// Diablo 2 hit recovery: only flinch when a single hit takes a real chunk of max life.
+	// Stalkers and Illusion Weavers keep their Diablo 1 behaviour, as their AI relies on reacting to every hit.
+	const bool alwaysReacts = IsAnyOf(monster.type().type, MT_SNEAK, MT_STALKER, MT_UNSEEN, MT_ILLWEAV);
+	if (monster.mode != MonsterMode::Petrified && (alwaysReacts || d2::MonsterFlinches(monster, dam))) {
+		StartMonsterGotHit(monster);
 	}
 }
 

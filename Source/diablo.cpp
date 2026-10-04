@@ -14,6 +14,7 @@
 #include "automap.h"
 #include "capture.h"
 #include "cursor.h"
+#include "d2mod.h"
 #include "dead.h"
 #ifdef _DEBUG
 #include "debug.h"
@@ -1379,6 +1380,7 @@ void GameLogic()
 	if (!ProcessInput()) {
 		return;
 	}
+	d2::UpdateLocalRunState();
 	if (gbProcessPlayers) {
 		gGameLogicStep = GameLogicStep::ProcessPlayers;
 		ProcessPlayers();
@@ -1637,6 +1639,14 @@ void InitKeymapActions()
 	    N_("Use mana potions from belt."),
 	    SDLK_UNKNOWN,
 	    [] { UseBeltItem(BLT_MANA); },
+	    nullptr,
+	    CanPlayerTakeAction);
+	sgOptions.Keymapper.AddAction(
+	    "ToggleRun",
+	    N_("Toggle run"),
+	    N_("Switch between running and walking. Hold Left Ctrl to temporarily do the opposite."),
+	    'R',
+	    d2::ToggleRun,
 	    nullptr,
 	    CanPlayerTakeAction);
 	sgOptions.Keymapper.AddAction(

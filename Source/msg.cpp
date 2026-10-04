@@ -176,6 +176,7 @@ string_view CmdIdString(_cmd_id cmd)
 	case CMD_NAKRUL: return "CMD_NAKRUL";
 	case CMD_OPENHIVE: return "CMD_OPENHIVE";
 	case CMD_OPENGRAVE: return "CMD_OPENGRAVE";
+	case CMD_SETRUN: return "CMD_SETRUN";
 	case FAKE_CMD_SETID: return "FAKE_CMD_SETID";
 	case FAKE_CMD_DROPID: return "FAKE_CMD_DROPID";
 	case CMD_INVALID: return "CMD_INVALID";
@@ -2342,6 +2343,16 @@ size_t OnSetReflect(const TCmd *pCmd, Player &player)
 	return sizeof(message);
 }
 
+size_t OnSetRun(const TCmd *pCmd, Player &player)
+{
+	const auto &message = *reinterpret_cast<const TCmdParam1 *>(pCmd);
+
+	if (gbBufferMsgs != 1)
+		player.isRunning = SDL_SwapLE16(message.wParam1) != 0;
+
+	return sizeof(message);
+}
+
 size_t OnNakrul(const TCmd *pCmd)
 {
 	if (gbBufferMsgs != 1) {
@@ -3308,6 +3319,8 @@ size_t ParseCmd(size_t pnum, const TCmd *pCmd)
 		return OnRemoveShield(pCmd, player);
 	case CMD_SETREFLECT:
 		return OnSetReflect(pCmd, player);
+	case CMD_SETRUN:
+		return OnSetRun(pCmd, player);
 	case CMD_NAKRUL:
 		return OnNakrul(pCmd);
 	case CMD_OPENHIVE:

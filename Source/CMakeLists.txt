@@ -9,6 +9,7 @@ set(libdevilutionx_SRCS
   codec.cpp
   control.cpp
   cursor.cpp
+  d2mod.cpp
   dead.cpp
   debug.cpp
   diablo.cpp

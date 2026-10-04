@@ -17,10 +17,11 @@
 
 namespace devilution {
 
-constexpr uint32_t GameIdDiabloFull = LoadBE32("DRTL");
-constexpr uint32_t GameIdDiabloSpawn = LoadBE32("DSHR");
-constexpr uint32_t GameIdHellfireFull = LoadBE32("HRTL");
-constexpr uint32_t GameIdHellfireSpawn = LoadBE32("HSHR");
+// Diablo 2 movement/combat mod: distinct IDs so modded and unmodded clients never join the same game.
+constexpr uint32_t GameIdDiabloFull = LoadBE32("DRT2");
+constexpr uint32_t GameIdDiabloSpawn = LoadBE32("DSH2");
+constexpr uint32_t GameIdHellfireFull = LoadBE32("HRT2");
+constexpr uint32_t GameIdHellfireSpawn = LoadBE32("HSH2");
 #define GAME_ID (gbIsHellfire ? (gbIsSpawn ? GameIdHellfireSpawn : GameIdHellfireFull) : (gbIsSpawn ? GameIdDiabloSpawn : GameIdDiabloFull))
 
 #define NUMLEVELS 25

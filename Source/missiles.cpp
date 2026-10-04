@@ -11,6 +11,7 @@
 #include "control.h"
 #include "controls/plrctrls.h"
 #include "cursor.h"
+#include "d2mod.h"
 #include "dead.h"
 #ifdef _DEBUG
 #include "debug.h"
@@ -213,9 +214,7 @@ bool MonsterMHit(int pnum, int monsterId, int mindam, int maxdam, int dist, Miss
 	const Player &player = Players[pnum];
 	const MissileData &missileData = GetMissileData(t);
 	if (missileData.isArrow()) {
-		hper = player.GetRangedPiercingToHit();
-		hper -= player.CalculateArmorPierce(monster.armorClass, false);
-		hper -= (dist * dist) / 2;
+		hper = d2::PlayerRangedChanceToHit(player, monster);
 	} else {
 		hper = player.GetMagicToHit() - (monster.level(sgGameInitInfo.nDifficulty) * 2) - dist;
 	}
@@ -327,9 +326,7 @@ bool Plr2PlrMHit(const Player &player, int p, int mindam, int maxdam, int dist, 
 
 	int hit;
 	if (missileData.isArrow()) {
-		hit = player.GetRangedToHit()
-		    - (dist * dist / 2)
-		    - target.GetArmor();
+		hit = d2::PlayerVsPlayerChanceToHit(player, target, true);
 	} else {
 		hit = player.GetMagicToHit()
 		    - (target._pLevel * 2)
@@ -1007,10 +1004,7 @@ bool PlayerMHit(int pnum, Monster *monster, int dist, int mind, int maxd, Missil
 	if (missileData.isArrow()) {
 		int tac = player.GetArmor();
 		if (monster != nullptr) {
-			hper = monster->toHit
-			    + ((monster->level(sgGameInitInfo.nDifficulty) - player._pLevel) * 2)
-			    + 30
-			    - (dist * 2) - tac;
+			hper = d2::MonsterChanceToHit(*monster, player, monster->toHit, tac);
 		} else {
 			hper = 100 - (tac / 2) - (dist * 2);
 		}
@@ -1026,6 +1020,8 @@ bool PlayerMHit(int pnum, Monster *monster, int dist, int mind, int maxd, Missil
 	if (currlevel == 16)
 		minhit = 30;
 	hper = std::max(hper, minhit);
+	if (monster != nullptr && missileData.isArrow())
+		hper = std::min(hper, d2::MaxChanceToHit);
 
 	int blk = 100;
 	if ((player._pmode == PM_STAND || player._pmode == PM_ATTACK) && player._pBlockFlag) {
