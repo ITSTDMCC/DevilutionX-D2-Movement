@@ -3688,6 +3688,7 @@ void M_StartHit(Monster &monster, int dam)
 			monster.goalVar2 = 0;
 		}
 		if (!d2::CombatEnabled() && monster.mode != MonsterMode::Petrified) {
+			d2::SettleMonsterHitMidStep(monster);
 			StartMonsterGotHit(monster);
 		}
 	}
@@ -3697,6 +3698,7 @@ void M_StartHit(Monster &monster, int dam)
 		// Stalkers and Illusion Weavers keep their Diablo 1 behaviour, as their AI relies on reacting to every hit.
 		const bool alwaysReacts = IsAnyOf(monster.type().type, MT_SNEAK, MT_STALKER, MT_UNSEEN, MT_ILLWEAV);
 		if (monster.mode != MonsterMode::Petrified && (alwaysReacts || d2::MonsterFlinches(monster, dam))) {
+			d2::SettleMonsterHitMidStep(monster);
 			StartMonsterGotHit(monster);
 		}
 	}

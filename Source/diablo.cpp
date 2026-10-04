@@ -879,8 +879,10 @@ void RunGameLoop(interface_mode uMsg)
 		if (game_loop(gbGameLoopStartup))
 			diablo_color_cyc_logic();
 		gbGameLoopStartup = false;
-		if (drawGame)
+		if (drawGame) {
 			DrawAndBlit();
+			d2::AfterFrameDrawn();
+		}
 #ifdef GPERF_HEAP_FIRST_GAME_ITERATION
 		if (run_game_iteration++ == 0)
 			HeapProfilerDump("first_game_iteration");

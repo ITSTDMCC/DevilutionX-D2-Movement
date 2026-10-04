@@ -1079,6 +1079,12 @@ TEST_F(D2Harness, GamepadGoesThroughDoorways)
 	std::printf("DOORS cases=%d stuck=%d\n", cases, failed);
 }
 
+/** Where the renderer draws a tile delta (+x: right and down, +y: left and down). */
+Displacement ScreenOf(int dx, int dy)
+{
+	return { (dx - dy) * 32, (dx + dy) * 16 };
+}
+
 TEST_F(D2Harness, HitMonstersEaseBackInsteadOfJumping)
 {
 	// A monster hit half-way through a step goes back to the tile it was leaving (stock rule, unchanged). It must
@@ -1091,7 +1097,7 @@ TEST_F(D2Harness, HitMonstersEaseBackInsteadOfJumping)
 	monster.animInfo.setNewAnimation(std::nullopt, 8, 1);
 	for (int i = 0; i < 4; i++)
 		monster.animInfo.processAnimation();
-	const Displacement drawnBefore = Displacement { monster.position.tile.x - monster.position.old.x, monster.position.tile.y - monster.position.old.y }.worldToScreen()
+	const Displacement drawnBefore = ScreenOf(monster.position.tile.x - monster.position.old.x, monster.position.tile.y - monster.position.old.y)
 	    + GetOffsetForWalking(monster.animInfo, monster.direction);
 	d2::BeginMonsterHitSlide(monster);
 	// the stock snap back
@@ -1147,6 +1153,40 @@ TEST_F(D2Harness, MovementReportHotkeyWritesTheLastSeconds)
 		lines++;
 	std::printf("REPORT %d lines\n", lines);
 	EXPECT_GT(lines, 40);
+}
+
+TEST_F(D2Harness, HitMonstersStopOnTheNearerTile)
+{
+	// Every frame of a step south-east: a hit before halfway settles back on the tile it was leaving, a hit after
+	// halfway finishes the step. Either way the monster never appears to move more than half a tile.
+	int finished = 0;
+	int returned = 0;
+	int worstJump = 0;
+	for (int frame = 0; frame < 8; frame++) {
+		Monster monster {};
+		monster.position.old = { 40, 40 };
+		monster.position.tile = monster.position.future = { 41, 40 };
+		monster.direction = Direction::SouthEast;
+		monster.mode = MonsterMode::MoveSouthwards;
+		monster.animInfo.setNewAnimation(std::nullopt, 8, 1);
+		for (int i = 0; i < frame; i++)
+			monster.animInfo.processAnimation();
+		const Displacement drawn = ScreenOf(monster.position.tile.x - 40, monster.position.tile.y - 40)
+		    + GetOffsetForWalking(monster.animInfo, monster.direction);
+		d2::SettleMonsterHitMidStep(monster);
+		d2::BeginMonsterHitSlide(monster);
+		const Point settled { monster.position.old.x, monster.position.old.y };
+		(settled == Point { 41, 40 } ? finished : returned)++;
+		const Displacement slide = d2::MonsterHitSlideOffset(monster, 0);
+		// drawn the same on the hit frame
+		const Displacement drawnAfter = ScreenOf(settled.x - 40, settled.y - 40) + slide;
+		EXPECT_EQ(drawnAfter, drawn) << "frame " << frame;
+		worstJump = std::max({ worstJump, std::abs(slide.deltaX), std::abs(slide.deltaY) * 2 });
+	}
+	std::printf("HITSETTLE finished=%d returned=%d worst=%d px\n", finished, returned, worstJump);
+	EXPECT_GT(finished, 0);
+	EXPECT_GT(returned, 0);
+	EXPECT_LE(worstJump, 34) << "a monster eased more than about half a tile";
 }
 
 TEST_F(D2Harness, WallsAreNeverEntered)

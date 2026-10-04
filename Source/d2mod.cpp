@@ -30,6 +30,8 @@
 #include "multi.h"
 #include "options.h"
 #include "player.h"
+#include "engine/dx.h"
+#include "engine/palette.h"
 #include "plrmsg.h"
 #include <ctime>
 #include "utils/paths.h"
@@ -1080,21 +1082,56 @@ bool GamepadStep(const Player &player, Direction dir, Point &target)
 	return found;
 }
 
-void BeginMonsterHitSlide(Monster &monster)
+namespace {
+
+/**
+ * Screen pixels for a tile delta, as the renderer draws tiles: +x is 32 right and 16 down, +y is 32 left and 16
+ * down. (Not Displacement::worldToScreen, which uses the missile code's flipped axes.)
+ */
+Displacement TileDeltaOnScreen(int dx, int dy)
 {
-	D2_PROBE_FN();
-	monster.d2HitSlide = {};
-	monster.d2HitSlideTicks = 0;
-	if (!MovementEnabled() || !monster.isWalking())
-		return;
-	// Where the walk is drawn right now (same rules as DrawMonsterHelper), relative to the tile it goes back to
+	return { (dx - dy) * 32, (dx + dy) * 16 };
+}
+
+/** Where a walking monster is drawn, relative to the tile it set out from (screen pixels). */
+Displacement MonsterDrawnFromOld(const Monster &monster)
+{
 	Point drawTile { monster.position.tile.x, monster.position.tile.y };
 	Displacement offset = GetOffsetForWalking(monster.animInfo, monster.direction);
 	if (monster.mode == MonsterMode::MoveSideways && monster.direction == Direction::West) {
 		drawTile = Point { monster.position.future.x, monster.position.future.y };
 		offset -= Displacement { 64, 0 };
 	}
-	const Displacement slide = Displacement { drawTile.x - monster.position.old.x, drawTile.y - monster.position.old.y }.worldToScreen() + offset;
+	return TileDeltaOnScreen(drawTile.x - monster.position.old.x, drawTile.y - monster.position.old.y) + offset;
+}
+
+} // namespace
+
+void SettleMonsterHitMidStep(Monster &monster)
+{
+	D2_PROBE_FN();
+	if (!MovementEnabled() || !monster.isWalking())
+		return;
+	const Displacement step = TileDeltaOnScreen(monster.position.future.x - monster.position.old.x, monster.position.future.y - monster.position.old.y);
+	const Displacement drawn = MonsterDrawnFromOld(monster);
+	const int64_t along = static_cast<int64_t>(drawn.deltaX) * step.deltaX + static_cast<int64_t>(drawn.deltaY) * step.deltaY;
+	const int64_t length = static_cast<int64_t>(step.deltaX) * step.deltaX + static_cast<int64_t>(step.deltaY) * step.deltaY;
+	// Past the halfway point: finish the step (the destination is already reserved for this monster)
+	if (length > 0 && 2 * along >= length)
+		monster.position.old = monster.position.future;
+}
+
+void BeginMonsterHitSlide(Monster &monster)
+{
+	D2_PROBE_FN();
+	monster.d2HitSlide = {};
+	monster.d2HitSlideTicks = 0;
+	// (The frame capture harness may switch the drawing on in stock mode too, to film stock fights)
+	static const bool Filming = std::getenv("D2_CAPTURE_DIR") != nullptr;
+	if ((!MovementEnabled() && !Filming) || !monster.isWalking())
+		return;
+	// Where the walk is drawn right now (same rules as DrawMonsterHelper), relative to the tile it settles on
+	const Displacement slide = MonsterDrawnFromOld(monster);
 	if (slide == Displacement {})
 		return;
 	monster.d2HitSlide = slide;
@@ -1135,7 +1172,7 @@ void AnchorMissileVisuals(Missile &missile, Point src, Point dst)
 	if (missile.d2StartOffset == Displacement {} && missile.d2EndOffset == Displacement {})
 		return;
 	// How many ticks the flight takes: screen distance between the tile centres over the speed per tick
-	const Displacement screen = (dst - src).worldToScreen();
+	const Displacement screen = TileDeltaOnScreen(dst.x - src.x, dst.y - src.y);
 	const int64_t distance = IntSqrt(static_cast<int64_t>(screen.deltaX) * screen.deltaX + static_cast<int64_t>(screen.deltaY) * screen.deltaY);
 	const int64_t vx = missile.position.velocity.deltaX >> 16;
 	const int64_t vy = missile.position.velocity.deltaY >> 16;
@@ -1403,6 +1440,37 @@ void WriteMovementReport()
 	}
 	std::fclose(file);
 	EventPlrMsg("Movement report saved");
+}
+
+void AfterFrameDrawn()
+{
+	static const char *CaptureDir = std::getenv("D2_CAPTURE_DIR");
+	static int framesLeft = 0;
+	static int saved = 0;
+	if (CaptureDir == nullptr || saved >= 400)
+		return;
+	bool sliding = false;
+	for (size_t i = 0; i < ActiveMonsterCount && !sliding; i++)
+		sliding = Monsters[ActiveMonsters[i]].d2HitSlideTicks > 0;
+	if (sliding)
+		framesLeft = 6; // keep going a little after the ease-back ends
+	if (framesLeft <= 0)
+		return;
+	framesLeft--;
+	const Surface out = GlobalBackBuffer();
+	const std::string path = fmt::format("{}/frame-{:05}-tick{:06}.ppm", CaptureDir, saved++, TraceTick);
+	std::FILE *file = std::fopen(path.c_str(), "wb");
+	if (file == nullptr)
+		return;
+	std::fprintf(file, "P6\n%d %d\n255\n", out.w(), out.h());
+	for (int y = 0; y < out.h(); y++) {
+		for (int x = 0; x < out.w(); x++) {
+			const SDL_Color &c = system_palette[out[{ x, y }]];
+			const uint8_t rgb[3] = { c.r, c.g, c.b };
+			std::fwrite(rgb, 1, 3, file);
+		}
+	}
+	std::fclose(file);
 }
 
 void ToggleRun()

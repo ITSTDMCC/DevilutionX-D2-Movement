@@ -267,6 +267,13 @@ Displacement MissileVisualOffset(const Missile &missile, int progress);
 /** Ticks a monster hit mid-step takes to ease back to its tile on screen. */
 constexpr int8_t MonsterHitSlideTicks = 4;
 
+/**
+ * @brief Diablo 2 movement: a monster hit mid-step stops on whichever of its two tiles it is nearer to, like a
+ * Diablo 2 unit stopping where it is, instead of always being sent back to the tile it was leaving (stock rule).
+ * Call before StartMonsterGotHit. Does nothing in stock mode, for monsters that are not walking, or for knockback.
+ */
+void SettleMonsterHitMidStep(Monster &monster);
+
 /** @brief Remember where a walking monster was drawn just before a hit sends it back to its old tile. */
 void BeginMonsterHitSlide(Monster &monster);
 
@@ -296,6 +303,12 @@ void RecordTrace();
  * d2movement-report-<time>.txt in the save folder (bound to K: "something looked wrong").
  */
 void WriteMovementReport();
+
+/**
+ * @brief Harness only (environment variable D2_CAPTURE_DIR): after a frame is drawn, save it while a monster is
+ * easing back from a hit, so the drawing can be checked frame by frame. Does nothing otherwise.
+ */
+void AfterFrameDrawn();
 
 /** @brief Toggle between walking and running (Diablo 2's R key). */
 void ToggleRun();
