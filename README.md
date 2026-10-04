@@ -14,6 +14,24 @@
 
 <sub>*(The health-bar and XP-bar are off by default, but can be enabled in the [game settings](https://github.com/diasurgical/devilutionX/wiki/DevilutionX-diablo.ini-configuration-guide). Widescreen can also be disabled if preferred)*</sub>
 
+# DevilutionX-D2-Movement
+
+This fork adds **Diablo 2 movement** to DevilutionX: click anywhere and your hero moves straight to that exact point at Diablo 2's walk and run speeds. Everything else plays exactly like DevilutionX 1.5.3.
+
+## Install (Windows)
+
+1. Download the latest zip from [Releases](https://github.com/ITSTDMCC/DevilutionX-D2-Movement/releases/latest) and extract it anywhere.
+2. Copy `DIABDAT.MPQ` from your own copy of Diablo (the CD, or [Diablo from GOG.com](https://www.gog.com/game/diablo)) into the extracted folder. For Hellfire, also copy `hellfire.mpq`, `hfmonk.mpq`, `hfmusic.mpq` and `hfvoice.mpq`.
+3. Run `devilutionx.exe`.
+
+This repository and its downloads contain no Diablo or Diablo 2 game files; you always bring your own.
+
+**In game:** R toggles running (on by default) and holding Left Ctrl does the opposite for a moment. Settings > Gameplay > "Diablo 2 Movement" switches back to the original tile walking. In multiplayer, players with D2 movement on only see games from others running this mod.
+
+How the movement was ported and tested: [tools/d2harness](tools/d2harness/README.md) and its [results report](tools/d2harness/REPORT.md). License and credits: [NOTICE-D2MOVEMENT.md](NOTICE-D2MOVEMENT.md).
+
+---
+
 # What is DevilutionX
 
 DevilutionX is a port of Diablo and Hellfire that strives to make it simple to run the game while providing engine improvements, bugfixes, and some optional quality of life features.
