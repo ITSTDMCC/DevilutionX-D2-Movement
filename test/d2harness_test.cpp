@@ -31,6 +31,7 @@
 #include "objects.h"
 #include "options.h"
 #include "player.h"
+#include "utils/paths.h"
 
 namespace devilution {
 namespace {
@@ -99,6 +100,12 @@ class D2Harness : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
+		// Keep the safety net's log out of the player's real save folder
+		static const std::string LogDir = [] {
+			const char *dir = std::getenv("D2_HARNESS_SAVE_DIR");
+			return std::string(dir != nullptr ? dir : ".") + "/";
+		}();
+		paths::SetPrefPath(LogDir);
 		sgOptions.Gameplay.d2Movement.SetValue(true);
 		sgOptions.Gameplay.d2Combat.SetValue(false);
 		sgOptions.Audio.walkingSound.SetValue(true);
@@ -1117,5 +1124,6 @@ TEST_F(D2Harness, ProbesCoverTheMovementPath)
 
 } // namespace
 } // namespace devilution
+
 
 

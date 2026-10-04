@@ -81,7 +81,7 @@ function Find-Errors($Text) {
 }
 
 # 1. Headless scenario tests (parity, collision, stock mode, probes)
-$env1 = @{ D2_COMMON_DLL = [string]$D2CommonDll; D2PROBE_LOG = (Join-Path $run 'probe_harness.log') }
+$env1 = @{ D2_HARNESS_SAVE_DIR = $run; D2_COMMON_DLL = [string]$D2CommonDll; D2PROBE_LOG = (Join-Path $run 'probe_harness.log') }
 $r = Invoke-Bounded -FilePath (Join-Path $bin 'd2harness_test.exe') -ArgumentList @("--gtest_output=xml:$(Join-Path $run 'd2harness.xml')") -TimeoutSeconds 300 -LogFile (Join-Path $run 'd2harness.log') -WorkingDirectory $bin -Environment $env1
 Add-StepResult 'harness' $r
 $r = Invoke-Bounded -FilePath (Join-Path $bin 'd2mod_test.exe') -ArgumentList @("--gtest_output=xml:$(Join-Path $run 'd2mod.xml')") -TimeoutSeconds 120 -LogFile (Join-Path $run 'd2mod.log') -WorkingDirectory $bin
