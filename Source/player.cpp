@@ -171,7 +171,8 @@ void HandleWalkMode(Player &player, Direction dir)
 bool IsPlayerRunning(const Player &player)
 {
 	D2_PROBE(player_IsPlayerRunning);
-	return (d2::MovementEnabled() && player.isRunning) || (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0);
+	// Diablo 2 mod: running (R) is a town thing, like the stock Run in Town option
+	return (d2::MovementEnabled() && player.isRunning && leveltype == DTYPE_TOWN) || (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0);
 }
 
 void StartWalkAnimation(Player &player, Direction dir, bool pmWillBeCalled)

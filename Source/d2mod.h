@@ -121,6 +121,22 @@ struct FreeMoveState {
 	int32_t goalY = 0;
 	bool goalEndspace = true;
 	uint8_t repaths = 0;
+	/** Safety net: an order is still unfinished (the hero should be getting somewhere). */
+	bool wantGoal = false;
+	/** Ticks in a row the hero wanted to move but did not. */
+	uint8_t idleTicks = 0;
+	/** Ticks since the hero last got closer to the goal (catches going back and forth), and the closest yet. */
+	uint8_t noImproveTicks = 0;
+	int32_t bestGoalDistance = INT32_MAX;
+	int32_t progressX = 0;
+	int32_t progressY = 0;
+	/** Safety net engaged: the rest of this order is walked by stock Diablo 1 tile walking. */
+	bool handover = false;
+	/** Waiting to reach the tile centre before the stock walk starts. */
+	bool handoverPending = false;
+	Point handoverGoal;
+	uint8_t handoverLength = 0;
+	int8_t handoverPath[MaxPathLength] = {};
 	/** Last walk frame a footstep was checked on. */
 	int8_t lastStepFrame = -1;
 	int32_t x = 0;
@@ -217,6 +233,13 @@ void FreeMoveStop(Player &player);
 
 /** @brief The hero started another action (attack, hit recovery, block, death): stop moving, keep the position. */
 void FreeMoveInterrupt(Player &player);
+
+/**
+ * @brief Safety net: hand the rest of the current order to stock Diablo 1 tile walking (after stepping to the tile
+ * centre). Engaged automatically when the hero wants to move but has not for a few ticks; logs a snapshot to
+ * d2movement-stuck.log in the save folder.
+ */
+void EngageTileWalkFallback(Player &player, const char *reason);
 
 /** @brief Forget the sub-tile position, e.g. on level change or teleport. */
 void FreeMoveReset(Player &player);

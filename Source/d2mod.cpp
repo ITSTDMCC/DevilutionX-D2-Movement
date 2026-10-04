@@ -28,6 +28,7 @@
 #include "multi.h"
 #include "options.h"
 #include "player.h"
+#include "utils/paths.h"
 #include "qol/autopickup.h"
 #include "utils/stdcompat/algorithm.hpp"
 
@@ -522,6 +523,36 @@ void PlayFootstep(Player &player, bool running)
 		PlaySfxLoc(PS_WALK1, player.position.tile);
 }
 
+void EngageFallback(Player &player, const char *reason);
+
+/**
+ * Safety net, part 1: the hero has somewhere to go but did not move this tick for a few ticks running, or has not
+ * got any closer for over a second (going back and forth). Whatever caused it, hand the order to stock Diablo 1
+ * tile walking, which goes wherever stock would.
+ */
+void Watchdog(Player &player, bool moved)
+{
+	D2_PROBE_FN();
+	FreeMoveState &move = player.freeMove;
+	if (!move.wantGoal || move.handover)
+		return;
+	const int32_t goalDistance = std::max(std::abs(move.goalX - move.x), std::abs(move.goalY - move.y));
+	if (goalDistance < move.bestGoalDistance) {
+		move.bestGoalDistance = goalDistance;
+		move.noImproveTicks = 0;
+	} else if (move.noImproveTicks < UINT8_MAX) {
+		move.noImproveTicks++;
+	}
+	move.idleTicks = moved ? 0 : move.idleTicks + 1;
+	if (move.idleTicks >= 4)
+		EngageFallback(player, move.active ? "no progress while moving" : "stopped short of the goal");
+	else if (move.noImproveTicks >= 24)
+		EngageFallback(player, "not getting any closer");
+}
+
+/** Set while FinishMoving puts the hero back into the stand animation (that is not a new action). */
+bool FinishingMove = false;
+
 void FinishMoving(Player &player)
 {
 	D2_PROBE_FN();
@@ -529,8 +560,11 @@ void FinishMoving(Player &player)
 	move.active = false;
 	if (move.animating) {
 		move.animating = false;
-		if (player._pmode == PM_STAND)
+		if (player._pmode == PM_STAND) {
+			FinishingMove = true;
 			StartStand(player, move.facing);
+			FinishingMove = false;
+		}
 	}
 }
 
@@ -561,10 +595,19 @@ void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool en
 	// on a blocked spot): go next to it and stop there, like stock Diablo 1, rather than shuffling on the spot
 	if (endspace && tile != start && !PosOkPlayer(player, tile))
 		endspace = false;
+	// A new destination starts the safety net's count afresh; the same one sent again (a held mouse button or a
+	// stick sends orders every tick) keeps counting, so being stuck is noticed however orders arrive
+	if (!move.wantGoal || TileOf(targetX, targetY) != TileOf(move.goalX, move.goalY)) {
+		move.idleTicks = 0;
+		move.noImproveTicks = 0;
+		move.bestGoalDistance = INT32_MAX;
+	}
 	move.goalX = targetX;
 	move.goalY = targetY;
 	move.goalEndspace = endspace;
 	move.repaths = 0;
+	move.handover = false;
+	move.handoverPending = false;
 
 	if (endspace && IsSubTileLineClear(player, move.x, move.y, targetX, targetY)) {
 		// Nothing in the way: head straight for the exact point
@@ -627,6 +670,9 @@ void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool en
 	}
 
 	move.active = move.waypointCount > 0;
+	move.wantGoal = move.active;
+	move.progressX = move.x;
+	move.progressY = move.y;
 }
 
 void FreeMoveTick(Player &player)
@@ -641,9 +687,17 @@ void FreeMoveTick(Player &player)
 		move.animating = false;
 		return;
 	}
+
+	// Safety net, part 2: the stock walk has finished (arrived, or stopped where stock would stop)
+	if (move.handover && !move.handoverPending && player.walkpath[0] == WALK_NONE) {
+		move.handover = false;
+		move.wantGoal = false;
+	}
+
 	if (!move.active) {
 		if (move.animating)
 			FinishMoving(player);
+		Watchdog(player, false);
 		return;
 	}
 
@@ -790,10 +844,20 @@ void FreeMoveTick(Player &player)
 		}
 		if (move.x == wx && move.y == wy) {
 			move.waypointIndex++;
-			if (move.waypointIndex >= move.waypointCount)
+			if (move.waypointIndex >= move.waypointCount) {
 				move.active = false;
+				if (move.handoverPending) {
+					// At the tile centre: the stock walk takes over from here (CheckNewPath starts it this tick)
+					move.handoverPending = false;
+					std::copy(move.handoverPath, move.handoverPath + move.handoverLength, player.walkpath);
+				} else if (!move.handover) {
+					move.wantGoal = false;
+				}
+			}
 		}
 	}
+
+	Watchdog(player, move.x != startX || move.y != startY);
 
 	// Face the way the hero is going on screen. Single ticks are too short to judge by (rounding makes them wobble),
 	// so aim at the path point the hero is walking to, looking past the 4 unit hop through a corner cut; when
@@ -849,6 +913,7 @@ void FreeMoveStop(Player &player)
 	D2_PROBE(d2_FreeMoveStop);
 	// The walk animation is replaced by whatever the hero does next, or by standing on the next tick
 	player.freeMove.active = false;
+	player.freeMove.wantGoal = false;
 }
 
 void FreeMoveInterrupt(Player &player)
@@ -856,6 +921,107 @@ void FreeMoveInterrupt(Player &player)
 	D2_PROBE(d2_FreeMoveInterrupt);
 	player.freeMove.active = false;
 	player.freeMove.animating = false;
+	// A hit or an attack ends the order; a stock walk handed over by the safety net keeps going (its own
+	// walk animation lands here too)
+	if (!player.freeMove.handover && !FinishingMove)
+		player.freeMove.wantGoal = false;
+}
+
+namespace {
+
+/** Black box for the safety net: what was around the hero when free movement made no progress. */
+void WriteStuckLog(const Player &player, const char *reason, int pathLength)
+{
+	static int entries = 0;
+	if (entries >= 200)
+		return;
+	entries++;
+	const std::string path = paths::PrefPath() + "d2movement-stuck.log";
+	std::FILE *file = std::fopen(path.c_str(), "a");
+	if (file == nullptr)
+		return;
+	const FreeMoveState &move = player.freeMove;
+	const Point tile = player.position.tile;
+	const Point goal = TileOf(move.goalX, move.goalY);
+	std::fprintf(file, "--- %s | level %d type %d | hero tile (%d,%d) sub (%d,%d) mode %d | goal tile (%d,%d) offset (%+d,%+d) endspace %d | waypoint %d/%d | stock path %d steps\n",
+	    reason, currlevel, static_cast<int>(leveltype), tile.x, tile.y, move.x - tile.x * SubTile, move.y - tile.y * SubTile, static_cast<int>(player._pmode),
+	    goal.x, goal.y, goal.x - tile.x, goal.y - tile.y, move.goalEndspace ? 1 : 0, move.waypointIndex, move.waypointCount, pathLength);
+	// 7x7 tiles around the hero (rows are y, columns x): H hero, # solid, O object, M monster, P other hero, . free
+	for (int dy = -3; dy <= 3; dy++) {
+		std::fputs("    ", file);
+		for (int dx = -3; dx <= 3; dx++) {
+			const Point p = tile + Displacement { dx, dy };
+			char c = '.';
+			if (!InDungeonBounds(p))
+				c = ' ';
+			else if (p == tile)
+				c = 'H';
+			else if (dMonster[p.x][p.y] != 0)
+				c = 'M';
+			else if (dPlayer[p.x][p.y] != 0)
+				c = 'P';
+			else if (IsTileSolid(p))
+				c = '#';
+			else if (!IsTileWalkable(p))
+				c = 'O';
+			if (p == goal && c == '.')
+				c = 'G';
+			std::fputc(c, file);
+		}
+		std::fputc('\n', file);
+	}
+	std::fclose(file);
+}
+
+} // namespace
+
+namespace {
+void EngageFallback(Player &player, const char *reason)
+{
+	EngageTileWalkFallback(player, reason);
+}
+} // namespace
+
+void EngageTileWalkFallback(Player &player, const char *reason)
+{
+	D2_PROBE(d2_StuckFallback);
+	FreeMoveState &move = player.freeMove;
+	const Point start = player.position.tile;
+	const Point goal = TileOf(move.goalX, move.goalY);
+	int8_t path[MaxPathLength];
+	int length = goal == start ? 0 : FindPath([&player](Point position) { return PosOkPlayer(player, position); }, start, goal, path);
+	if (length > 0 && !move.goalEndspace)
+		length--;
+	WriteStuckLog(player, reason, length);
+	move.idleTicks = 0;
+	move.noImproveTicks = 0;
+	if (length <= 0) {
+		// Stock Diablo 1 could not get there either (boxed in, or already there): stop trying
+		move.wantGoal = false;
+		FinishMoving(player);
+		return;
+	}
+	move.handover = true;
+	move.handoverGoal = goal;
+	move.handoverLength = static_cast<uint8_t>(length);
+	std::fill(move.handoverPath, move.handoverPath + MaxPathLength, static_cast<int8_t>(WALK_NONE));
+	std::copy(path, path + length, move.handoverPath);
+	// Stock walking starts from the tile centre: step there first (always possible, it is our own tile)
+	move.waypointCount = 1;
+	move.waypointIndex = 0;
+	move.hopEnd = 0;
+	move.waypointX[0] = start.x * SubTile;
+	move.waypointY[0] = start.y * SubTile;
+	move.carryX = 0;
+	move.carryY = 0;
+	if (move.x == move.waypointX[0] && move.y == move.waypointY[0]) {
+		move.handoverPending = false;
+		move.active = false;
+		std::copy(move.handoverPath, move.handoverPath + length, player.walkpath);
+	} else {
+		move.handoverPending = true;
+		move.active = true;
+	}
 }
 
 void FreeMoveReset(Player &player)
@@ -926,6 +1092,8 @@ void OnWalkFine(Player &player, Point tile, uint16_t packedFine)
 		return;
 	const int fineX = static_cast<int>(packedFine & 0xFF) - SubTile / 2;
 	const int fineY = static_cast<int>(packedFine >> 8) - SubTile / 2;
+	if (player.freeMove.handover && tile == player.freeMove.handoverGoal)
+		return; // the safety net is already walking there
 	ClrPlrPath(player);
 	FreeMoveSetTarget(player, tile, fineX, fineY, true);
 	player.destAction = ACTION_NONE;

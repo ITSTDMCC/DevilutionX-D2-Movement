@@ -76,6 +76,7 @@ Player &SetupHero(Point start, bool running)
 	player.position.tile = player.position.future = player.position.old = start;
 	dPlayer[start.x][start.y] = 1;
 	d2probe::ForgetPositions();
+	ClrPlrPath(player); // as InitPlayer does: an empty walk path is WALK_NONE, not zero
 	d2::FreeMoveReset(player);
 	StartStand(player, Direction::South);
 	return player;
@@ -547,13 +548,15 @@ TEST_F(D2Harness, NeverStuckNextToAChest)
 	std::printf("CHESTSIDE cases=%d stuck=%d\n", cases, stuck);
 }
 
-enum class Blocker { Chest, Monster, Townsperson, OtherHero, Wall };
+enum class Blocker { Chest, Sarcophagus, Monster, Townsperson, OtherHero, Wall, PillarAndSkeleton };
 enum class Control { MouseHeld, MouseClick, Gamepad };
 
 const char *Name(Blocker b)
 {
 	switch (b) {
 	case Blocker::Chest: return "chest";
+	case Blocker::Sarcophagus: return "sarcophagus (two tiles)";
+	case Blocker::PillarAndSkeleton: return "pillar with a skeleton beside it";
 	case Blocker::Monster: return "monster";
 	case Blocker::Townsperson: return "townsperson";
 	case Blocker::OtherHero: return "other hero";
@@ -576,6 +579,18 @@ void PlaceBlocker(Blocker kind, Point tile)
 	switch (kind) {
 	case Blocker::Chest:
 		SolidObject(0, tile);
+		break;
+	case Blocker::Sarcophagus:
+		// A large object: its main tile, plus the tile behind it marked as part of it
+		SolidObject(0, tile);
+		dObject[tile.x][tile.y - 1] = -1;
+		break;
+	case Blocker::PillarAndSkeleton:
+		Wall(tile);
+		Monsters[0] = {};
+		Monsters[0].hitPoints = 100 << 6;
+		Monsters[0].position.tile = Monsters[0].position.future = Monsters[0].position.old = tile + Displacement { 2, 0 };
+		dMonster[tile.x + 2][tile.y] = 1;
 		break;
 	case Blocker::Monster:
 	case Blocker::Townsperson:
@@ -638,7 +653,7 @@ TEST_F(D2Harness, NothingTrapsTheHero)
 	const Point blocker { 45, 45 };
 	int cases = 0;
 	int failures = 0;
-	for (const Blocker kind : { Blocker::Chest, Blocker::Monster, Blocker::Townsperson, Blocker::OtherHero, Blocker::Wall }) {
+	for (const Blocker kind : { Blocker::Chest, Blocker::Sarcophagus, Blocker::Monster, Blocker::Townsperson, Blocker::OtherHero, Blocker::Wall, Blocker::PillarAndSkeleton }) {
 		for (const Control control : { Control::MouseHeld, Control::MouseClick, Control::Gamepad }) {
 			int kindFailures = 0;
 			for (int side = 0; side < 8; side++) {
@@ -648,6 +663,8 @@ TEST_F(D2Harness, NothingTrapsTheHero)
 						PlaceBlocker(kind, blocker);
 						const Displacement towards = ScreenSteps[(side + 4) % 8];
 						const Point start = blocker + ScreenSteps[side] + ScreenSteps[side];
+						if (dMonster[start.x][start.y] != 0 || dObject[start.x][start.y] != 0 || IsTileSolid(start))
+							continue;
 						Player &player = SetupHero(start, false);
 						player.isRunning = true;
 						MouseState mouse;
@@ -706,6 +723,49 @@ TEST_F(D2Harness, NothingTrapsTheHero)
 	}
 	std::printf("TRAPS cases=%d stuck=%d\n", cases, failures);
 	EXPECT_GT(cases, 3000);
+}
+
+TEST_F(D2Harness, SafetyNetHandsOverToStockWalking)
+{
+	// Force free movement into a dead end (a pocket, with its route deliberately pointed through a wall and its
+	// re-routing used up). The safety net must notice within a few ticks and let stock walking take the hero home.
+	ClearLevel();
+	leveltype = DTYPE_CATHEDRAL;
+	for (int i = -1; i <= 1; i++) {
+		Wall(Start + Displacement { i, -1 });
+		Wall(Start + Displacement { 1, i });
+		Wall(Start + Displacement { i, 1 });
+	}
+	Player &player = SetupHero(Start, false);
+	const Point goal = Start + Displacement { 6, 0 };
+	d2::FreeMoveSetTarget(player, goal, 0, 0, true);
+	ASSERT_TRUE(d2::FreeMoveActive(player));
+	// Sabotage: straight through the wall, no re-routing left
+	player.freeMove.waypointCount = 1;
+	player.freeMove.waypointIndex = 0;
+	player.freeMove.waypointX[0] = goal.x * 256;
+	player.freeMove.waypointY[0] = goal.y * 256;
+	player.freeMove.repaths = 3;
+	const uint64_t fallbacksBefore = d2probe::Count(d2probe::Id::d2_StuckFallback);
+	bool sawStockWalk = false;
+	int tick = 0;
+	for (; tick < 300 && player.position.tile != goal; tick++) {
+		ProcessPlayers();
+		d2probe::CheckTick();
+		sawStockWalk = sawStockWalk || player.isWalking();
+		// a held mouse keeps re-sending the same destination: it must not cancel the stock walk
+		if (player.freeMove.handover)
+			d2::OnWalkFine(player, goal, 0x8080);
+	}
+	std::printf("SAFETYNET fallbacks=%llu stockwalk=%d ticks=%d\n", static_cast<unsigned long long>(d2probe::Count(d2probe::Id::d2_StuckFallback) - fallbacksBefore), sawStockWalk ? 1 : 0, tick);
+	EXPECT_GT(d2probe::Count(d2probe::Id::d2_StuckFallback), fallbacksBefore) << "safety net never engaged";
+	EXPECT_TRUE(sawStockWalk) << "stock walking never took over";
+	EXPECT_EQ(player.position.tile, goal) << "did not get home";
+	for (int t = 0; t < 20; t++)
+		ProcessPlayers();
+	EXPECT_EQ(player._pmode, PM_STAND);
+	EXPECT_FALSE(player.freeMove.handover) << "safety net did not let go after arriving";
+	EXPECT_FALSE(player.freeMove.wantGoal);
 }
 
 TEST_F(D2Harness, NeverStuckAmongScatteredObjects)

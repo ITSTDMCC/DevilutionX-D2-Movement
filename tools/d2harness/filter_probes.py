@@ -140,6 +140,10 @@ def main():
             check('collision: nothing traps the hero (chests, monsters, townspeople, heroes, walls; mouse held, click, gamepad)',
                   m.group(2) == '0' and 'NothingTrapsTheHero' not in failed_tests,
                   f'{m.group(1)} walk-into-then-head-off cases: {m.group(2)} stuck', 'parity')
+        m = re.search(r'SAFETYNET fallbacks=(\d+) stockwalk=(\d+) ticks=(\d+)', text)
+        if m:
+            check('safety net: hands a stuck walk to stock Diablo 1 walking', 'SafetyNetHandsOverToStockWalking' not in failed_tests,
+                  f'engaged {m.group(1)} time(s), stock walking took the hero home in {m.group(3)} ticks', 'parity')
         m = re.search(r'GAMEPAD frames=(\d+) over 64 ticks, previews skipped=(\d+)', text)
         if m:
             check('gamepad: walk cycle keeps animating', 'GamepadWalkKeepsAnimating' not in failed_tests,
