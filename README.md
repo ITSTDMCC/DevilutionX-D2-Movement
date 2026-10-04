@@ -16,7 +16,7 @@
 
 # DevilutionX-D2-Movement
 
-This fork adds **Diablo 2 movement** to DevilutionX: click anywhere and your hero moves straight to that exact point at Diablo 2's walk and run speeds. Everything else plays exactly like DevilutionX 1.5.3.
+This fork adds **Diablo 2 movement** to DevilutionX: click anywhere (or push the stick) and your hero moves straight to that exact point, sliding past the corners of objects, while keeping Diablo 1's pacing: the original walking speed in the dungeon, and the original jog in town. Everything else plays exactly like DevilutionX 1.5.3.
 
 ## Install (Windows)
 
@@ -26,7 +26,7 @@ This fork adds **Diablo 2 movement** to DevilutionX: click anywhere and your her
 
 This repository and its downloads contain no Diablo or Diablo 2 game files; you always bring your own.
 
-**In game:** R toggles running (on by default) and holding Left Ctrl does the opposite for a moment. Settings > Gameplay > "Diablo 2 Movement" switches back to the original tile walking. In multiplayer, players with D2 movement on only see games from others running this mod.
+**In game:** in town, R toggles running (on by default) and holding Left Ctrl does the opposite for a moment; in the dungeon everyone walks, as in the original. Settings > Gameplay > "Diablo 2 Movement" switches back to the original tile walking. In multiplayer, players with D2 movement on only see games from others running this mod.
 
 How the movement was ported and tested: [tools/d2harness](tools/d2harness/README.md) and its [results report](tools/d2harness/REPORT.md). License and credits: [NOTICE-D2MOVEMENT.md](NOTICE-D2MOVEMENT.md).
 

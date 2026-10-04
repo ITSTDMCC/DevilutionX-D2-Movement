@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -27,6 +28,7 @@
 #include "levels/gendung.h"
 #include "lighting.h"
 #include "multi.h"
+#include "objects.h"
 #include "options.h"
 #include "player.h"
 
@@ -40,6 +42,7 @@ void ClearLevel()
 	std::memset(dPlayer, 0, sizeof(dPlayer));
 	std::memset(dMonster, 0, sizeof(dMonster));
 	std::memset(dPiece, 0, sizeof(dPiece));
+	std::memset(dObject, 0, sizeof(dObject));
 	SOLData.fill(TileProperties::None);
 	SOLData[1] = TileProperties::Solid;
 	currlevel = 0;
@@ -185,27 +188,6 @@ RefHeading RefDirection(const std::vector<RefEntry> &lut, int64_t sx, int64_t sy
 	return h;
 }
 
-/** Seconds Diablo 2 needs to move a unit by (dx, dy) Diablo 1 tiles = (2dx, 2dy) subtiles. */
-double RefTravelSeconds(const std::vector<RefEntry> &lut, int dx, int dy, int velocity)
-{
-	const int64_t speed = (1024LL * (velocity << 8)) >> 6;
-	int64_t x = 0, y = 0;
-	const int64_t tx = 2LL * dx * 65536, ty = 2LL * dy * 65536;
-	int frames = 0;
-	while (frames < 100000) {
-		const double remaining = std::hypot(static_cast<double>(tx - x), static_cast<double>(ty - y));
-		if (remaining <= speed) {
-			// Arrives part way through this frame
-			return (frames + remaining / speed) / 25.0;
-		}
-		const RefHeading h = RefDirection(lut, x, y, tx, ty);
-		x += (speed * h.x) >> 12;
-		y += (speed * h.y) >> 12;
-		frames++;
-	}
-	return -1;
-}
-
 TEST_F(D2Harness, TangentTableMatchesD2CommonDll)
 {
 	size_t offset = 0;
@@ -265,45 +247,69 @@ constexpr SpeedCase SpeedCases[] = {
 	{ 20, 7 }, { 7, 20 }, { -20, 9 }, { 13, -17 }, { 20, -3 }, { -5, -19 }, { 18, 11 }, { -11, 18 },
 };
 
-TEST_F(D2Harness, WalkAndRunSpeedsMatchDiablo2)
+/**
+ * Ticks stock Diablo 1 takes to walk from Start to Start + (dx, dy) (or jog, in town with Run in Town),
+ * measured by running the stock code path in this same harness.
+ */
+int StockTicks(int dx, int dy, bool town)
 {
-	size_t offset = 0;
-	const std::vector<RefEntry> lut = ReadD2CommonTable(offset);
-	double worstPercent = 0;
-	for (int running = 0; running < 2; running++) {
+	sgOptions.Gameplay.d2Movement.SetValue(false);
+	ClearLevel();
+	leveltype = town ? DTYPE_TOWN : DTYPE_CATHEDRAL;
+	sgGameInitInfo.bRunInTown = town ? 1 : 0;
+	Player &player = SetupHero(Start, false);
+	const Point target = Start + Displacement { dx, dy };
+	ClrPlrPath(player);
+	MakePlrPath(player, target, true);
+	int ticks = 0;
+	for (; ticks < 600 && (player.walkpath[0] != WALK_NONE || player._pmode != PM_STAND); ticks++)
+		ProcessPlayers();
+	EXPECT_EQ(player.position.tile, target) << "stock walk " << dx << "," << dy;
+	sgOptions.Gameplay.d2Movement.SetValue(true);
+	sgGameInitInfo.bRunInTown = 0;
+	return ticks;
+}
+
+/** Ticks the mod takes for the same trip (hero running wherever running is allowed). */
+int ModTicks(int dx, int dy, bool town)
+{
+	ClearLevel();
+	leveltype = town ? DTYPE_TOWN : DTYPE_CATHEDRAL;
+	Player &player = SetupHero(Start, true);
+	const Point target = Start + Displacement { dx, dy };
+	d2::FreeMoveSetTarget(player, target, 0, 0, true);
+	int ticks = 0;
+	for (; ticks < 600 && d2::FreeMoveActive(player); ticks++) {
+		ProcessPlayers();
+		d2probe::CheckTick();
+	}
+	EXPECT_EQ(player.position.tile, target) << "mod walk " << dx << "," << dy;
+	EXPECT_EQ(player._pmode, PM_STAND);
+	EXPECT_FALSE(player.freeMove.animating) << "hero kept the walk animation after stopping";
+	return ticks;
+}
+
+TEST_F(D2Harness, PacingMatchesStockDiablo1)
+{
+	// Dungeon: never faster than a stock step even with running toggled on. Town: the stock Run in Town jog.
+	// Stock walking also spends a fixed couple of ticks starting and stopping each order (free movement starts
+	// on the same tick), so trips are compared per step: measure that fixed part first.
+	int worst = 0;
+	for (int town = 0; town < 2; town++) {
+		const int ticks10 = StockTicks(10, 0, town != 0);
+		const int ticks20 = StockTicks(20, 0, town != 0);
+		const int pace = (ticks20 - ticks10) / 10;
+		const int overhead = ticks10 - 10 * pace;
+		std::printf("PACING %s stock pace %d ticks a step, %d ticks to start and stop\n", town != 0 ? "town-run" : "dungeon ", pace, overhead);
 		for (const SpeedCase &c : SpeedCases) {
-			ClearLevel();
-			Player &player = SetupHero(Start, running != 0);
-			const Point target = Start + Displacement { c.dx, c.dy };
-			d2::FreeMoveSetTarget(player, target, 0, 0, true);
-			int ticks = 0;
-			double lastTickFraction = 0;
-			for (; ticks < 600 && d2::FreeMoveActive(player); ticks++) {
-				const int32_t beforeX = player.freeMove.x, beforeY = player.freeMove.y;
-				ProcessPlayers();
-				d2probe::CheckTick();
-				if (!d2::FreeMoveActive(player)) {
-					const double moved = std::hypot(player.freeMove.x - beforeX, player.freeMove.y - beforeY);
-					lastTickFraction = moved / (running != 0 ? d2::RunSpeed : d2::WalkSpeed);
-				}
-			}
-			ASSERT_EQ(player.position.tile, target) << c.dx << "," << c.dy;
-			const double seconds = (ticks - 1 + lastTickFraction) / 20.0;
-			const double tiles = std::hypot(c.dx, c.dy);
-			const double expected = tiles / (running != 0 ? 7.03125 : 4.6875);
-			double reference = expected;
-			if (!lut.empty())
-				reference = RefTravelSeconds(lut, c.dx, c.dy, running != 0 ? d2::D2RunVelocity : d2::D2WalkVelocity);
-			const double percent = 100.0 * std::abs(seconds - reference) / reference;
-			worstPercent = std::max(worstPercent, percent);
-			std::printf("PARITY %s d=(%d,%d) d1mod=%.4fs d2ref=%.4fs diff=%.3f%% speed=%.3f tiles/s\n",
-			    running != 0 ? "run " : "walk", c.dx, c.dy, seconds, reference, percent, tiles / seconds);
-			EXPECT_LE(percent, 1.0) << "travel time differs from Diablo 2 by more than 1%";
-			EXPECT_EQ(player._pmode, PM_STAND);
-			EXPECT_FALSE(player.freeMove.animating) << "hero kept the walk animation after stopping";
+			const int stock = StockTicks(c.dx, c.dy, town != 0) - overhead;
+			const int mod = ModTicks(c.dx, c.dy, town != 0);
+			worst = std::max(worst, std::abs(mod - stock));
+			std::printf("PACING %s d=(%d,%d) stock=%d ticks mod=%d ticks\n", town != 0 ? "town-run" : "dungeon ", c.dx, c.dy, stock, mod);
+			EXPECT_LE(std::abs(mod - stock), 1) << (town != 0 ? "town" : "dungeon") << " trip " << c.dx << "," << c.dy << " differs from stock Diablo 1";
 		}
 	}
-	std::printf("PARITY worst=%.3f%% reference=%s\n", worstPercent, lut.empty() ? "formula" : "D2Common.dll table");
+	std::printf("PACING worst=%d ticks\n", worst);
 }
 
 TEST_F(D2Harness, PathStaysOnTheStraightLine)
@@ -328,14 +334,17 @@ TEST_F(D2Harness, PathStaysOnTheStraightLine)
 
 TEST_F(D2Harness, WalkCycleAndFootstepsFollowTheStride)
 {
-	for (int running = 0; running < 2; running++) {
+	for (int town = 0; town < 2; town++) {
 		ClearLevel();
-		Player &player = SetupHero(Start, running != 0);
+		leveltype = town != 0 ? DTYPE_TOWN : DTYPE_CATHEDRAL;
+		// Running is toggled on in both: the dungeon still walks (with footsteps), the town jogs (without)
+		Player &player = SetupHero(Start, true);
 		const uint64_t stepsBefore = d2probe::Count(d2probe::Id::sound_PlaySfxLoc);
 		d2::FreeMoveSetTarget(player, Start + Displacement { 16, 0 }, 0, 0, true);
 		int frames = 0;
+		int ticks = 0;
 		int8_t last = player.AnimInfo.currentFrame;
-		for (int tick = 0; tick < 600 && d2::FreeMoveActive(player); tick++) {
+		for (; ticks < 600 && d2::FreeMoveActive(player); ticks++) {
 			ProcessPlayers();
 			const int8_t now = player.AnimInfo.currentFrame;
 			frames += (now - last + 8) % 8;
@@ -343,15 +352,96 @@ TEST_F(D2Harness, WalkCycleAndFootstepsFollowTheStride)
 		}
 		const uint64_t steps = d2probe::Count(d2probe::Id::sound_PlaySfxLoc) - stepsBefore;
 		// Diablo 1's walk cycle covers one tile per 8 frames; 16 tiles should show about 128 frames
-		std::printf("STRIDE %s frames=%d (expect ~128) footsteps=%llu\n", running != 0 ? "run" : "walk", frames, static_cast<unsigned long long>(steps));
+		std::printf("STRIDE %s frames=%d (expect ~128) footsteps=%llu ticks=%d\n", town != 0 ? "run" : "walk", frames, static_cast<unsigned long long>(steps), ticks);
 		EXPECT_NEAR(frames, 128, 10);
-		if (running != 0) {
-			EXPECT_EQ(steps, 0U) << "Diablo 1 plays no footsteps while running";
+		if (town != 0) {
+			EXPECT_EQ(steps, 0U) << "Diablo 1 plays no footsteps while jogging";
 		} else {
 			// Frames 0 and 4 of each cycle: two per tile
 			EXPECT_NEAR(static_cast<double>(steps), 32.0, 3.0);
 		}
 	}
+}
+
+TEST_F(D2Harness, GamepadWalkKeepsAnimating)
+{
+	// The gamepad sends a walk order one tile ahead every tick. The stride must keep cycling, and the
+	// "preview" first walk frame (which froze the cycle on screen) must not be shown while moving.
+	ClearLevel();
+	leveltype = DTYPE_CATHEDRAL;
+	Player &player = SetupHero(Start, false);
+	gbRunGame = true;
+	gbProcessPlayers = true;
+	PauseMode = 0;
+	const uint64_t skippedBefore = d2probe::Count(d2probe::Id::d2_PreviewSkipped);
+	int frames = 0;
+	int8_t last = player.AnimInfo.currentFrame;
+	for (int tick = 0; tick < 64; tick++) {
+		const Point target = player.position.future + Direction::SouthEast;
+		ClrPlrPath(player);
+		MakePlrPath(player, target, true);
+		player.destAction = ACTION_NONE;
+		ProcessPlayers();
+		d2probe::CheckTick();
+		player.UpdatePreviewCelSprite(CMD_WALKXY, player.position.future + Direction::SouthEast, 0, 0);
+		EXPECT_FALSE(static_cast<bool>(player.previewCelSprite)) << "walk preview shown mid-stride at tick " << tick;
+		EXPECT_EQ(player.getGraphic(), player_graphic::Walk) << "not in the walk cycle at tick " << tick;
+		const int8_t now = player.AnimInfo.currentFrame;
+		frames += (now - last + 8) % 8;
+		last = now;
+	}
+	gbRunGame = false;
+	std::printf("GAMEPAD frames=%d over 64 ticks, previews skipped=%llu\n", frames, static_cast<unsigned long long>(d2probe::Count(d2probe::Id::d2_PreviewSkipped) - skippedBefore));
+	EXPECT_NEAR(frames, 64, 2) << "walk cycle did not advance one frame per tick";
+	EXPECT_GT(d2probe::Count(d2probe::Id::d2_PreviewSkipped), skippedBefore);
+	EXPECT_EQ(player.position.tile, (Start + Displacement { 8, 0 })) << "64 ticks of walking should cover 8 tiles";
+}
+
+void SolidObject(int index, Point tile)
+{
+	Objects[index] = {};
+	Objects[index]._oSolidFlag = true;
+	Objects[index].position = tile;
+	dObject[tile.x][tile.y] = static_cast<int8_t>(index + 1);
+}
+
+TEST_F(D2Harness, SlipsBetweenBarrelsAtAnAngle)
+{
+	// Two barrels with a one tile gap between them; approach from below at many angles and starting spots
+	int trips = 0;
+	int slides = 0;
+	for (int sx = 40; sx <= 50; sx++) {
+		for (int sy = 44; sy <= 47; sy++) {
+			for (const Point target : { Point { 45, 36 }, Point { 42, 35 }, Point { 48, 35 } }) {
+				for (int fine = 0; fine < 3; fine++) {
+					ClearLevel();
+					leveltype = DTYPE_CATHEDRAL;
+					SolidObject(0, { 44, 40 });
+					SolidObject(1, { 46, 40 });
+					// a wall either side, so the gap is the only way through
+					for (int x = 30; x <= 43; x++)
+						Wall({ x, 40 });
+					for (int x = 47; x <= 60; x++)
+						Wall({ x, 40 });
+					Player &player = SetupHero({ sx, sy }, false);
+					const int fx[3] = { 0, 90, -100 };
+					const int fy[3] = { 0, -70, 60 };
+					const uint64_t slidesBefore = d2probe::Count(d2probe::Id::d2_MoveSlide);
+					d2::FreeMoveSetTarget(player, target, fx[fine], fy[fine], true);
+					int tick = 0;
+					for (; tick < 600 && d2::FreeMoveActive(player); tick++) {
+						ProcessPlayers();
+						d2probe::CheckTick();
+						ASSERT_FALSE(player.position.tile == Point(44, 40) || player.position.tile == Point(46, 40)) << "inside a barrel";
+					}
+					slides += static_cast<int>(d2probe::Count(d2probe::Id::d2_MoveSlide) - slidesBefore);
+					EXPECT_EQ(player.position.tile, target) << "stuck from (" << sx << "," << sy << ") fine " << fine << " heading to (" << target.x << "," << target.y << ") at (" << player.position.tile.x << "," << player.position.tile.y << ")";
+					trips++;
+				}
+			}
+		}
+	}
+	std::printf("BARRELS trips=%d slides=%d\n", trips, slides);
 }
 
 TEST_F(D2Harness, WallsAreNeverEntered)
@@ -418,6 +508,30 @@ TEST_F(D2Harness, OccupiedTilesBlockMovement)
 	EXPECT_EQ(dMonster[hero.position.tile.x][hero.position.tile.y], 0);
 	EXPECT_GT(d2probe::Count(d2probe::Id::d2_MoveBlocked), blockedBefore);
 	EXPECT_EQ(hero._pmode, PM_STAND);
+}
+
+TEST_F(D2Harness, MovementLogicCostsLittle)
+{
+	// The mod's own work per tick (stepping, steering towards the mouse, the camera offset) must be tiny
+	// next to a frame: at 1,400 fps a frame is about 700 microseconds.
+	ClearLevel();
+	leveltype = DTYPE_CATHEDRAL;
+	Player &player = SetupHero(Start, false);
+	d2probe::ForceChecks(false);
+	constexpr int Ticks = 20000;
+	const auto begin = std::chrono::steady_clock::now();
+	for (int tick = 0; tick < Ticks; tick++) {
+		if (!d2::FreeMoveActive(player)) {
+			const Point target = (tick / 300) % 2 == 0 ? Point { 60, 52 } : Point { 40, 40 };
+			d2::FreeMoveSetTarget(player, target, 37, -21, true);
+		}
+		d2::FreeMoveTick(player);
+		static_cast<void>(d2::GlideCorrection(player));
+	}
+	const double micros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - begin).count() / Ticks;
+	d2probe::ForceChecks(true);
+	std::printf("LOGIC %.3f microseconds per tick\n", micros);
+	EXPECT_LT(micros, 7.0) << "movement logic costs more than 1% of a 700 microsecond frame";
 }
 
 TEST_F(D2Harness, StockModeIsUntouched)

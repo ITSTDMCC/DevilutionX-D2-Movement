@@ -17,9 +17,8 @@ import xml.etree.ElementTree as ET
 EXIT_PASS, EXIT_FAIL, EXIT_MISSING, EXIT_TIMEOUT = 0, 1, 3, 124
 threading.Timer(120, lambda: os._exit(EXIT_TIMEOUT)).start()
 
-WALK_SPEED, RUN_SPEED = 60, 90           # sub-tile units per tick, from D2 velocities 6 and 9
 FPS_TOLERANCE = 0.95                     # modded build must reach 95% of stock FPS
-SPEED_TOLERANCE = 0.01                   # average full-tick speed within 1% of Diablo 2
+SPEED_TOLERANCE = 0.01                   # average full-tick speed within 1% of stock Diablo 1
 
 checks = []
 
@@ -96,17 +95,30 @@ def main():
                             ('demo_d1.xml', 'demo d1'), ('demo_d2.xml', 'demo d2')):
         gtest_results(os.path.join(run, xml_name), label)
 
+    failed_tests = {c['name'].split('.')[-1] for c in checks if c['category'] == 'tests' and not c['ok']}
+
     # Parity numbers printed by the harness
     harness_out = os.path.join(run, 'd2harness.log')
     parity = []
     if os.path.exists(harness_out):
         text = open(harness_out, encoding='utf-8', errors='replace').read()
-        for m in re.finditer(r'PARITY (walk|run) +d=\((-?\d+),(-?\d+)\) d1mod=([\d.]+)s d2ref=([\d.]+)s diff=([\d.]+)% speed=([\d.]+)', text):
-            parity.append({'mode': m.group(1), 'dx': int(m.group(2)), 'dy': int(m.group(3)), 'seconds': float(m.group(4)),
-                           'reference': float(m.group(5)), 'diffPercent': float(m.group(6)), 'tilesPerSecond': float(m.group(7))})
-        worst = re.search(r'PARITY worst=([\d.]+)% reference=(.+)', text)
-        check('movement parity: travel time vs D2 reference within 1%', worst and float(worst.group(1)) <= 1.0,
-              f"worst {worst.group(1)}% against {worst.group(2).strip()}" if worst else 'no parity output', 'parity')
+        for m in re.finditer(r'PACING (town-run|dungeon) +d=\((-?\d+),(-?\d+)\) stock=(\d+) ticks mod=(\d+) ticks', text):
+            parity.append({'where': m.group(1), 'dx': int(m.group(2)), 'dy': int(m.group(3)), 'stockTicks': int(m.group(4)), 'modTicks': int(m.group(5))})
+        worst = re.search(r'PACING worst=(\d+) ticks', text)
+        check('pacing: every trip as long as stock Diablo 1 (within 1 tick)', worst and int(worst.group(1)) <= 1,
+              f"{len(parity)} trips in 16 directions, dungeon and town jog; worst difference {worst.group(1)} tick(s)" if worst else 'no pacing output', 'parity')
+        m = re.search(r'BARRELS trips=(\d+) slides=(\d+)', text)
+        if m:
+            check('collision: slips between barrels from every angle tried', 'SlipsBetweenBarrelsAtAnAngle' not in failed_tests,
+                  f'{m.group(1)} trips through a one-tile gap, {m.group(2)} corner slides', 'parity')
+        m = re.search(r'LOGIC ([\d.]+) microseconds per tick', text)
+        if m:
+            check('fps: movement logic under 1% of a frame', float(m.group(1)) < 7.0,
+                  f'{m.group(1)} microseconds per tick (a frame at 1,400 fps is about 700)', 'fps')
+        m = re.search(r'GAMEPAD frames=(\d+) over 64 ticks, previews skipped=(\d+)', text)
+        if m:
+            check('gamepad: walk cycle keeps animating', 'GamepadWalkKeepsAnimating' not in failed_tests,
+                  f'{m.group(1)} walk frames over 64 ticks; {m.group(2)} frozen-frame previews suppressed', 'parity')
         for m in re.finditer(r'STRIDE (walk|run) frames=(\d+) \(expect ~128\) footsteps=(\d+)', text):
             check(f'audio: {m.group(1)} footsteps follow Diablo 1 rules', (int(m.group(3)) == 0) if m.group(1) == 'run' else 29 <= int(m.group(3)) <= 35,
                   f'{m.group(3)} footsteps over 16 tiles, {m.group(2)} walk frames', 'audio')
@@ -138,12 +150,12 @@ def main():
         check('d2 mode: free movement active in the real game', c.get('d2_FreeMoveTick', 0) > 0 and c.get('d2_MoveTo', 0) > 0,
               f"FreeMoveTick={c.get('d2_FreeMoveTick', 0)} MoveTo={c.get('d2_MoveTo', 0)}", 'parity')
         st = d2['stats']
-        for kind, speed in (('walk', WALK_SPEED), ('run', RUN_SPEED)):
+        for kind, label in (('walk', 'walking (dungeon and town)'), ('run', 'jogging (town)')):
             ticks = st.get(f'{kind}_ticks', 0)
             if ticks:
-                avg = st.get(f'{kind}_distance', 0) / ticks
-                check(f'd2 mode: in-game {kind} speed matches Diablo 2', abs(avg - speed) / speed <= SPEED_TOLERANCE,
-                      f'{avg:.2f} sub-tile units/tick over {ticks} ticks (D2: {speed})', 'parity')
+                moved, expected = st.get(f'{kind}_moved', 0) / ticks, st.get(f'{kind}_expected', 0) / ticks
+                check(f'd2 mode: in-game {kind} speed matches stock Diablo 1', abs(moved - expected) / expected <= SPEED_TOLERANCE,
+                      f'{label}: {moved:.2f} sub-tile units/tick over {ticks} ticks (stock: {expected:.0f})', 'parity')
         check('d2 mode: combat rules stay stock', c.get('d2_ChanceToHit', 0) == 0 and c.get('d2_MonsterFlinches', 0) == 0
               and c.get('d2_PlayerFlinches', 0) == 0, 'D2 combat probes at 0', 'gameplay')
 
@@ -186,12 +198,19 @@ def main():
                     key = (m.group(1), int(f))
                     marks[key] = min(marks.get(key, 1e9), float(s))
         common = sorted({f for mode, f in marks if mode == 'mod_d1'} & {f for mode, f in marks if mode == 'mod_d2'})
-        if common:
-            frames = common[-1]
+        # The D2 replay plays a different game (the hero may die, reload or sit in a menu while frames keep being
+        # drawn), so only compare the stretch before its first level change, where both draw the same level
+        limit = None
+        if d2:
+            later = [int(t) for t in re.findall(r'^T(\d+) LEVEL', open(os.path.join(run, 'probe_d2.log'), encoding='utf-8').read(), re.M) if int(t) > 0]
+            limit = min(later) if later else None
+        window = [f for f in common if limit is None or f <= limit]
+        if window:
+            frames = window[-1]
             d1fps, d2fps = frames / marks[('mod_d1', frames)], frames / marks[('mod_d2', frames)]
             fps['mod_d1_window'], fps['mod_d2_window'], fps['window_frames'] = d1fps, d2fps, frames
             check('fps: mod (D2 movement) not below 95% over the same frames', d2fps >= FPS_TOLERANCE * d1fps,
-                  f'first {frames} frames: {d2fps:.1f} fps vs {d1fps:.1f} fps with stock movement ({100 * d2fps / d1fps:.1f}%)', 'fps')
+                  f'first {frames} frames (same level in both replays): {d2fps:.1f} fps vs {d1fps:.1f} fps with stock movement ({100 * d2fps / d1fps:.1f}%)', 'fps')
         else:
             check('fps: mod (D2 movement) measured', False, 'no common timing marks', 'fps')
     elif any(bench.values()):

@@ -65,7 +65,7 @@ extern Point MousePosition;
 extern DVL_API_FOR_TEST bool gbRunGame;
 extern bool gbRunGameResult;
 extern bool ReturnToMainMenu;
-extern bool gbProcessPlayers;
+extern DVL_API_FOR_TEST bool gbProcessPlayers;
 extern DVL_API_FOR_TEST bool gbLoadGame;
 extern bool cineflag;
 /* These are defined in fonts.h */

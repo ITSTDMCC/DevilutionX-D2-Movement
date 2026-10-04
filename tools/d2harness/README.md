@@ -43,10 +43,10 @@ The harness never ships or commits game files. Point it at your own copies with 
 
 | Step | Limit | Checks |
 |---|---|---|
-| `d2harness_test` | 300 s | D2Common.dll tangent table identical byte for byte; headings identical to a D2 reference for 40,000 deltas; walk/run travel times within 1% of D2 in 16 directions; straight lines; stride and footsteps; walls, closed rooms, blocking monsters; stock mode untouched; probes fire |
+| `d2harness_test` | 300 s | D2Common.dll tangent table identical byte for byte; headings identical to a D2 reference for 40,000 deltas; every trip in 16 directions as long as stock D1 walking (dungeon) and jogging (town); slipping between barrels at hundreds of angles; gamepad walking keeps its walk cycle; straight lines; stride and footsteps; walls, closed rooms, blocking monsters; stock mode untouched; probes fire |
 | `d2mod_test`, `d2glide_sim_test` | 120 s / 300 s | Path straightening and on-screen glide line |
 | `d2demo_test` (D1 mode) | 600 s | Stock demo replay with stock movement: hero must match the stock recording exactly; no D2 code may run |
-| `d2demo_test` (D2 mode) | 600 s | Same demo with D2 movement: no invariant failures, in-game speeds match D2, levels identical to D1 mode, all subsystems active |
+| `d2demo_test` (D2 mode) | 600 s | Same demo with D2 movement: no invariant failures, in-game speeds match stock D1, levels identical to D1 mode, all subsystems active |
 | timedemo FPS (stock, mod D1, mod D2) x `-BenchRuns` | 300 s each | Mod FPS at least 95% of the stock 1.5.3 build (best run of each) |
 
 ## Probes

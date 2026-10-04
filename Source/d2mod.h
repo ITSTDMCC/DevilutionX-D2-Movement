@@ -51,13 +51,24 @@ constexpr int32_t D2SpeedPerTick(int32_t velocity)
 {
 	return static_cast<int32_t>(static_cast<int64_t>(D2UnitsPerFrame(velocity)) * D2FramesPerSecond * (SubTile / 2) / (65536LL * D1TicksPerSecond));
 }
-/** Walking speed in sub-tile units per game tick (Diablo 2: 4.6875 tiles a second). */
-constexpr int32_t WalkSpeed = D2SpeedPerTick(D2WalkVelocity);
-/** Running speed in sub-tile units per game tick (Diablo 2: 7.03 tiles a second). */
-constexpr int32_t RunSpeed = D2SpeedPerTick(D2RunVelocity);
-static_assert(WalkSpeed == 60 && RunSpeed == 90, "Diablo 2 speeds do not convert exactly");
+/** Diablo 2's own walk and run speeds on the Diablo 1 grid (4.69 and 7.03 tiles a second), kept for reference. */
+constexpr int32_t D2WalkSpeed = D2SpeedPerTick(D2WalkVelocity);
+constexpr int32_t D2RunSpeed = D2SpeedPerTick(D2RunVelocity);
+static_assert(D2WalkSpeed == 60 && D2RunSpeed == 90, "Diablo 2 speeds do not convert exactly");
+
+/**
+ * Pacing follows Diablo 1 (players found Diablo 2 speeds too fast for Diablo 1's dungeons): one tile per
+ * 8 ticks, measured like Diablo 1 counts steps (the larger of the x and y distance), so every one of the
+ * 8 directions takes exactly as long as a stock step and directions in between blend smoothly.
+ */
+constexpr int32_t D1WalkSpeed = SubTile / 8;
+/** Running exists only in town, at the speed of the stock "Run in Town" jog. */
+constexpr int32_t D1TownRunSpeed = 2 * D1WalkSpeed;
 /** Speed the Diablo 1 walk cycle is drawn for (one tile per 8 frame stride): faster movement plays it faster. */
 constexpr int32_t D1WalkCycleSpeed = SubTile / 8;
+
+/** @brief Speed in sub-tile units per tick (larger axis) the hero moves at right now. */
+int32_t MoveSpeed(const Player &player);
 
 /** Diablo 2 direction: unit vector scaled to 4096 and one of 64 directions (0 is +x+y, counting towards +y). */
 struct D2Heading {
@@ -94,6 +105,11 @@ struct FreeMoveState {
 	/** Fraction of a sub-tile unit not yet moved, in 1/4096ths (Diablo 2 keeps 1/65536 subtile precision). */
 	int32_t carryX = 0;
 	int32_t carryY = 0;
+	/** Where the current order goes, so the hero can find a new way when the old one turns out to be blocked. */
+	int32_t goalX = 0;
+	int32_t goalY = 0;
+	bool goalEndspace = true;
+	uint8_t repaths = 0;
 	/** Last walk frame a footstep was checked on. */
 	int8_t lastStepFrame = -1;
 	int32_t x = 0;

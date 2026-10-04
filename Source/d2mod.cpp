@@ -345,7 +345,30 @@ void EnsurePosition(Player &player)
 bool IsRunning(const Player &player)
 {
 	D2_PROBE_FN();
-	return player.isRunning || (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0);
+	// Running is a town thing, as in stock Diablo; in the dungeon everyone walks
+	if (leveltype != DTYPE_TOWN)
+		return false;
+	return player.isRunning || sgGameInitInfo.bRunInTown != 0;
+}
+
+/** Could the hero be at sub-tile point (x, y) next (same tile, or a neighbour they may step into)? */
+bool CanMoveTo(const Player &player, int32_t x, int32_t y)
+{
+	D2_PROBE_FN();
+	const Point to = TileOf(x, y);
+	return to == player.position.tile || CanCross(player, player.position.tile, to);
+}
+
+/** Is a live monster or another player standing on the tile (rather than a wall, door or object)? */
+bool IsOccupied(const Player &player, Point tile)
+{
+	D2_PROBE_FN();
+	if (!InDungeonBounds(tile))
+		return false;
+	const int8_t other = dPlayer[tile.x][tile.y];
+	if (other != 0 && std::abs(other) - 1 != static_cast<int>(player.getId()))
+		return true;
+	return dMonster[tile.x][tile.y] != 0;
 }
 
 void UpdateLightOffset(const Player &player)
@@ -467,6 +490,10 @@ void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool en
 	move.waypointIndex = 0;
 	move.carryX = 0;
 	move.carryY = 0;
+	move.goalX = targetX;
+	move.goalY = targetY;
+	move.goalEndspace = endspace;
+	move.repaths = 0;
 
 	if (endspace && IsSubTileLineClear(player, move.x, move.y, targetX, targetY)) {
 		// Nothing in the way: head straight for the exact point
@@ -530,37 +557,40 @@ void FreeMoveTick(Player &player)
 		return;
 	}
 
-	// Diablo 2 path step: each frame the unit moves velocity units along the table heading towards the
-	// current path point, re-aiming after every step and carrying on to the next point once it is reached.
+	// Diablo 2 path step: each tick the hero moves along the table heading towards the current path point,
+	// re-aiming after every step and carrying on to the next point once it is reached. Distance is counted the
+	// Diablo 1 way (larger axis), so every direction is exactly as fast as a stock step.
 	const bool running = IsRunning(player);
-	const int32_t speed = running ? RunSpeed : WalkSpeed;
+	const int32_t speed = MoveSpeed(player);
 	const int32_t startX = move.x;
 	const int32_t startY = move.y;
 	const uint8_t startWaypoint = move.waypointIndex;
+	bool slid = false;
 	int64_t budget = speed;
 	while (budget > 0 && move.active) {
 		const int32_t wx = move.waypointX[move.waypointIndex];
 		const int32_t wy = move.waypointY[move.waypointIndex];
 		const int64_t dx = wx - move.x;
 		const int64_t dy = wy - move.y;
-		const int64_t distance = IntSqrt(dx * dx + dy * dy);
+		const int64_t steps = std::max(std::abs(dx), std::abs(dy));
 
 		int32_t nextX;
 		int32_t nextY;
-		if (distance <= budget) {
+		if (steps <= budget) {
 			nextX = wx;
 			nextY = wy;
-			budget -= distance;
+			budget -= steps;
 			move.carryX = 0;
 			move.carryY = 0;
-			if (distance > 0)
+			if (steps > 0)
 				SetFacing(player, FacingFromDir64(D2DirectionVector(dx, dy).dir64));
 		} else {
 			const D2Heading heading = D2DirectionVector(dx, dy);
 			SetFacing(player, FacingFromDir64(heading.dir64));
-			// Keep the remainder for the next tick, so rounding never adds up to a speed or direction error
-			const int64_t fineX = budget * heading.x + move.carryX;
-			const int64_t fineY = budget * heading.y + move.carryY;
+			// Scale the heading so its larger axis moves exactly the budget; keep remainders for the next tick
+			const int64_t major = std::max(std::abs(heading.x), std::abs(heading.y));
+			const int64_t fineX = budget * heading.x * 4096 / major + move.carryX;
+			const int64_t fineY = budget * heading.y * 4096 / major + move.carryY;
 			nextX = move.x + static_cast<int32_t>(fineX >> 12);
 			nextY = move.y + static_cast<int32_t>(fineY >> 12);
 			move.carryX = static_cast<int32_t>(fineX & 0xFFF);
@@ -569,8 +599,41 @@ void FreeMoveTick(Player &player)
 		}
 
 		if (!MoveTo(player, nextX, nextY)) {
-			// Something stepped into the way
 			D2_PROBE(d2_MoveBlocked);
+			const Point blockedTile = TileOf(nextX, nextY);
+			if (IsOccupied(player, blockedTile)) {
+				// Someone stepped into the way: stop, like Diablo 1 does
+				FinishMoving(player);
+				return;
+			}
+			// Clipping the corner of a wall, barrel or other object: slide along it on the axis that is free,
+			// trying first whichever axis brings the hero closer to where they are going
+			const int32_t slideX[2] = { nextX, move.x };
+			const int32_t slideY[2] = { move.y, nextY };
+			const bool xFirst = std::abs(nextX - move.x) >= std::abs(nextY - move.y);
+			bool moved = false;
+			for (int k = 0; k < 2 && !moved; k++) {
+				const int c = xFirst ? k : 1 - k;
+				if ((slideX[c] != move.x || slideY[c] != move.y) && CanMoveTo(player, slideX[c], slideY[c]))
+					moved = MoveTo(player, slideX[c], slideY[c]);
+			}
+			if (moved) {
+				D2_PROBE(d2_MoveSlide);
+				slid = true;
+				move.carryX = 0;
+				move.carryY = 0;
+				break; // re-aim next tick
+			}
+			// Wedged: look for a new way from here, a few times per order at most
+			if (move.repaths < 3) {
+				D2_PROBE(d2_Repath);
+				const uint8_t repaths = move.repaths + 1;
+				const Point goal = TileOf(move.goalX, move.goalY);
+				FreeMoveSetTarget(player, goal, move.goalX - goal.x * SubTile, move.goalY - goal.y * SubTile, move.goalEndspace);
+				move.repaths = repaths;
+				if (move.active)
+					break;
+			}
 			FinishMoving(player);
 			return;
 		}
@@ -587,15 +650,15 @@ void FreeMoveTick(Player &player)
 		return;
 	}
 
-	if (move.waypointIndex == startWaypoint) {
-		// A whole tick on one straight leg: the distance covered is exactly the speed
+	if (move.waypointIndex == startWaypoint && !slid) {
+		// A whole tick on one straight leg: the distance covered (larger axis) is exactly the speed
 		const int64_t movedX = move.x - startX;
 		const int64_t movedY = move.y - startY;
-		d2probe::RecordMoveTick(running, IntSqrt(movedX * movedX + movedY * movedY));
+		d2probe::RecordMoveTick(speed, std::max(std::abs(movedX), std::abs(movedY)));
 	}
 
-	// The engine shows one walk frame per tick, which is Diablo 1 walking speed; show extra frames to keep the
-	// stride in step with the faster Diablo 2 speeds. Footsteps follow the Diablo 1 rule: frames 0 and 4, walking only.
+	// The engine shows one walk frame per tick, which is Diablo 1 walking speed; show extra frames when jogging in
+	// town to keep the stride in step. Footsteps follow the Diablo 1 rule: frames 0 and 4, walking only.
 	PlayFootstep(player, running);
 	move.animCarry += speed - D1WalkCycleSpeed;
 	while (move.animCarry >= D1WalkCycleSpeed) {
@@ -603,6 +666,12 @@ void FreeMoveTick(Player &player)
 		player.AnimInfo.processAnimation();
 		PlayFootstep(player, running);
 	}
+}
+
+int32_t MoveSpeed(const Player &player)
+{
+	D2_PROBE_FN();
+	return IsRunning(player) ? D1TownRunSpeed : D1WalkSpeed;
 }
 
 bool FreeMoveActive(const Player &player)

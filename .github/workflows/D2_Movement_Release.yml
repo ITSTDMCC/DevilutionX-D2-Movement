@@ -73,5 +73,5 @@ jobs:
              For Hellfire, also copy hellfire.mpq, hfmonk.mpq, hfmusic.mpq and hfvoice.mpq.
           3. Run `devilutionx.exe`.
 
-          R toggles running. Settings > Gameplay > "Diablo 2 Movement" switches back to stock Diablo 1 walking.
+          Diablo 1 pacing (walking in the dungeon, jogging in town; R toggles). Settings > Gameplay > "Diablo 2 Movement" switches back to stock Diablo 1 walking.
           This download contains no Blizzard game data.

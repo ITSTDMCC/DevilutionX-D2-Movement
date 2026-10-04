@@ -45,7 +45,8 @@ uint64_t FailLinesWritten = 0;
 
 struct MoveStats {
 	uint64_t ticks = 0;
-	int64_t distance = 0;
+	int64_t moved = 0;
+	int64_t expected = 0;
 };
 MoveStats WalkStats;
 MoveStats RunStats;
@@ -191,14 +192,17 @@ void CheckTick()
 		if (move.valid) {
 			const int32_t dx = move.x - tile.x * d2::SubTile;
 			const int32_t dy = move.y - tile.y * d2::SubTile;
-			if (std::abs(dx) > d2::SubTile / 2 || std::abs(dy) > d2::SubTile / 2)
+			// While moving, the hero's exact point must lie in the tile the rest of the game sees. (When stopped it may
+			// be stale after a teleport or level change; the next order resyncs it, see EnsurePosition.)
+			if (move.active && (std::abs(dx) > d2::SubTile / 2 || std::abs(dy) > d2::SubTile / 2))
 				Fail("sub_tile_outside_tile", fmt::format("p{} ({},{}) d=({},{})", id, tile.x, tile.y, dx, dy));
-			if (last.valid && last.active && move.active && last.level == player.plrlevel) {
+			if (last.valid && last.active && move.active && last.level == player.plrlevel && last.tile.WalkingDistance(tile) <= 1) {
 				const int64_t mx = move.x - last.x;
 				const int64_t my = move.y - last.y;
-				const int64_t limit = d2::RunSpeed + 2;
-				if (mx * mx + my * my > limit * limit)
-					Fail("speed_above_d2_run", fmt::format("p{} moved ({},{}) in one tick", id, mx, my));
+				// Never faster than a stock Diablo 1 step: walking in the dungeon, jogging in town
+				const int64_t limit = (leveltype == DTYPE_TOWN ? d2::D1TownRunSpeed : d2::D1WalkSpeed) + 1;
+				if (std::max(std::abs(mx), std::abs(my)) > limit)
+					Fail("speed_above_d1", fmt::format("p{} moved ({},{}) in one tick", id, mx, my));
 			}
 			last.valid = true;
 			last.x = move.x;
@@ -243,11 +247,12 @@ void OnLevelLoaded()
 	    currlevel, static_cast<int>(leveltype), hash, ActiveMonsterCount, monsters, ActiveObjectCount, objects, ActiveItemCount, items));
 }
 
-void RecordMoveTick(bool running, int64_t distance)
+void RecordMoveTick(int32_t expected, int64_t moved)
 {
-	MoveStats &stats = running ? RunStats : WalkStats;
+	MoveStats &stats = expected > d2::D1WalkSpeed ? RunStats : WalkStats;
 	stats.ticks++;
-	stats.distance += distance;
+	stats.moved += moved;
+	stats.expected += expected;
 }
 
 void RecordBench(int frames, float seconds)
@@ -269,8 +274,8 @@ void Dump(std::string_view reason)
 			file.remove_prefix(slash + 1);
 		Write(fmt::format("SITE {}:{} {}", file, site->function, site->hits));
 	}
-	Write(fmt::format("STAT walk_ticks {} walk_distance {}", WalkStats.ticks, WalkStats.distance));
-	Write(fmt::format("STAT run_ticks {} run_distance {}", RunStats.ticks, RunStats.distance));
+	Write(fmt::format("STAT walk_ticks {} walk_moved {} walk_expected {}", WalkStats.ticks, WalkStats.moved, WalkStats.expected));
+	Write(fmt::format("STAT run_ticks {} run_moved {} run_expected {}", RunStats.ticks, RunStats.moved, RunStats.expected));
 	Write(fmt::format("STAT failures {}", Failures));
 	std::fflush(LogFile);
 }

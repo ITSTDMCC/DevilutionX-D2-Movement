@@ -2006,6 +2006,13 @@ void Player::UpdatePreviewCelSprite(_cmd_id cmdId, Point point, uint16_t wParam1
 	if (_pmode != PM_STAND)
 		return;
 
+	// Diablo 2 mod: a hero moving freely is in PM_STAND but mid-stride, and a walk order (the gamepad sends one
+	// every tick) only steers. Showing the first walk frame as a preview would freeze the walk cycle on screen.
+	if (freeMove.animating && cmdId == _cmd_id::CMD_WALKXY) {
+		D2_PROBE(d2_PreviewSkipped);
+		return;
+	}
+
 	std::optional<player_graphic> graphic;
 	Direction dir = Direction::South;
 	int minimalWalkDistance = -1;
