@@ -540,6 +540,10 @@ struct GameplayOptions : OptionCategoryBase {
 	OptionEntryBoolean testBard;
 	/** @brief Enable the babarian hero class. */
 	OptionEntryBoolean testBarbarian;
+	/** @brief Diablo 2 mod: Diablo 2 movement instead of Diablo 1 tile walking. */
+	OptionEntryBoolean d2Movement;
+	/** @brief Diablo 2 mod: Diablo 2 to-hit and hit recovery rules. */
+	OptionEntryBoolean d2Combat;
 	/** @brief Show the current level progress. */
 	OptionEntryBoolean experienceBar;
 	/** @brief Show item graphics to the left of item descriptions in store menus. */

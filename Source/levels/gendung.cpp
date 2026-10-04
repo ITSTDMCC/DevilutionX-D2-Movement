@@ -1,4 +1,5 @@
 #include "levels/gendung.h"
+#include "d2probe.h"
 
 #include <cstdint>
 #include <stack>
@@ -558,6 +559,7 @@ void LoadTransparency(const uint16_t *dunData)
 
 void LoadDungeonBase(const char *path, Point spawn, int floorId, int dirtId)
 {
+	D2_PROBE_FN();
 	ViewPosition = spawn;
 
 	InitGlobals();

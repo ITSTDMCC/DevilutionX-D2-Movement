@@ -4,6 +4,7 @@
  * Implementation of functions for minifying player data structure.
  */
 #include "pack.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -250,6 +251,7 @@ void PackItem(ItemPack &packedItem, const Item &item, bool isHellfire)
 
 void PackPlayer(PlayerPack &packed, const Player &player)
 {
+	D2_PROBE_FN();
 	memset(&packed, 0, sizeof(packed));
 	packed.destAction = player.destAction;
 	packed.destParam1 = player.destParam1;
@@ -318,6 +320,7 @@ void PackNetItem(const Item &item, ItemNetPack &packedItem)
 
 void PackNetPlayer(PlayerNetPack &packed, const Player &player)
 {
+	D2_PROBE_FN();
 	packed.plrlevel = player.plrlevel;
 	packed.px = player.position.tile.x;
 	packed.py = player.position.tile.y;
@@ -443,6 +446,7 @@ void UnPackItem(const ItemPack &packedItem, const Player &player, Item &item, bo
 
 void UnPackPlayer(const PlayerPack &packed, Player &player)
 {
+	D2_PROBE_FN();
 	Point position { packed.px, packed.py };
 
 	player = {};
@@ -543,6 +547,7 @@ bool UnPackNetItem(const Player &player, const ItemNetPack &packedItem, Item &it
 
 bool UnPackNetPlayer(const PlayerNetPack &packed, Player &player)
 {
+	D2_PROBE_FN();
 	CopyUtf8(player._pName, packed.pName, sizeof(player._pName));
 
 	ValidateField(packed.pClass, packed.pClass < enum_size<HeroClass>::value);

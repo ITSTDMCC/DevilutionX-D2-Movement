@@ -5,6 +5,7 @@
  */
 
 #include <cstdint>
+#include "d2probe.h"
 #include <cstdio>
 
 #include <fmt/format.h>
@@ -1050,6 +1051,8 @@ GameplayOptions::GameplayOptions()
     , multiplayerFullQuests("MultiplayerFullQuests", OptionEntryFlags::CantChangeInMultiPlayer, N_("Full quests in Multiplayer"), N_("Enables the full/uncut singleplayer version of quests."), false)
     , testBard("Test Bard", OptionEntryFlags::CantChangeInGame, N_("Test Bard"), N_("Force the Bard character type to appear in the hero selection menu."), false)
     , testBarbarian("Test Barbarian", OptionEntryFlags::CantChangeInGame, N_("Test Barbarian"), N_("Force the Barbarian character type to appear in the hero selection menu."), false)
+    , d2Movement("Diablo 2 Movement", OptionEntryFlags::CantChangeInGame, N_("Diablo 2 Movement"), N_("Move freely at Diablo 2 walk and run speeds (R toggles running). Off restores the original Diablo 1 tile walking."), true)
+    , d2Combat("Diablo 2 Combat", OptionEntryFlags::CantChangeInGame, N_("Diablo 2 Combat"), N_("Use Diablo 2 chance to hit and hit recovery rules."), false)
     , experienceBar("Experience Bar", OptionEntryFlags::None, N_("Experience Bar"), N_("Experience Bar is added to the UI at the bottom of the screen."), false)
     , showItemGraphicsInStores("Show Item Graphics in Stores", OptionEntryFlags::None, N_("Show Item Graphics in Stores"), N_("Show item graphics to the left of item descriptions in store menus."), false)
     , showHealthValues("Show health values", OptionEntryFlags::None, N_("Show health values"), N_("Displays current / max health value on health globe."), false)
@@ -1090,6 +1093,7 @@ GameplayOptions::GameplayOptions()
 }
 std::vector<OptionEntryBase *> GameplayOptions::GetEntries()
 {
+	D2_PROBE_FN();
 	return {
 		&tickRate,
 		&friendlyFire,
@@ -1101,6 +1105,8 @@ std::vector<OptionEntryBase *> GameplayOptions::GetEntries()
 		&quickCast,
 		&testBard,
 		&testBarbarian,
+		&d2Movement,
+		&d2Combat,
 		&experienceBar,
 		&showItemGraphicsInStores,
 		&showHealthValues,

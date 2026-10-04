@@ -10,6 +10,7 @@ set(libdevilutionx_SRCS
   control.cpp
   cursor.cpp
   d2mod.cpp
+  d2probe.cpp
   dead.cpp
   debug.cpp
   diablo.cpp

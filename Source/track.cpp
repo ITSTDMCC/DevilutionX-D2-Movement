@@ -11,6 +11,7 @@
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "d2mod.h"
+#include "d2probe.h"
 #include "engine/point.hpp"
 #include "player.h"
 #include "stores.h"
@@ -21,14 +22,24 @@ namespace {
 
 void RepeatWalk(Player &player)
 {
+	D2_PROBE(track_RepeatWalk);
 	if (!InDungeonBounds(cursPosition))
 		return;
 
 	if (player._pmode != PM_STAND && !(player.isWalking() && player.AnimInfo.getFrameToUseForRendering() > 6))
 		return;
 
-	// Diablo 2 mod: keep steering towards the exact point under the mouse
-	d2::SendWalkToCursor(false);
+	if (d2::MovementEnabled()) {
+		// Diablo 2 mod: keep steering towards the exact point under the mouse
+		d2::SendWalkToCursor(false);
+		return;
+	}
+
+	const Point target = player.GetTargetPosition();
+	if (cursPosition == target)
+		return;
+
+	NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, cursPosition);
 }
 
 } // namespace

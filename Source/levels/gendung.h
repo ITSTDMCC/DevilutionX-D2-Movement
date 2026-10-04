@@ -200,14 +200,14 @@ extern uint8_t dPreLight[MAXDUNX][MAXDUNY];
 /** Holds various information about dungeon tiles, @see DungeonFlag */
 extern DungeonFlag dFlags[MAXDUNX][MAXDUNY];
 /** Contains the player numbers (players array indices) of the map. negative id indicates player moving. */
-extern int8_t dPlayer[MAXDUNX][MAXDUNY];
+extern DVL_API_FOR_TEST int8_t dPlayer[MAXDUNX][MAXDUNY];
 /**
  * Contains the NPC numbers of the map. The NPC number represents a
  * towner number (towners array index) in Tristram and a monster number
  * (monsters array index) in the dungeon.
  * Negative id indicates monsters moving.
  */
-extern int16_t dMonster[MAXDUNX][MAXDUNY];
+extern DVL_API_FOR_TEST int16_t dMonster[MAXDUNX][MAXDUNY];
 /**
  * Contains the dead numbers (deads array indices) and dead direction of
  * the map, encoded as specified by the pseudo-code below.

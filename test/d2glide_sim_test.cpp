@@ -101,8 +101,8 @@ TEST(D2GlideSim, HeroIsDrawnOnTheStraightLine)
 		}
 	}
 	EXPECT_LE(worstOverall, 3.5) << "Hero strays from the straight line";
-	// Six tiles along a tile axis at walking speed: about 8 ticks per tile like Diablo 1
-	EXPECT_NEAR(walkTicks, 48, 2);
+	// Six tiles along a tile axis at Diablo 2 walking speed (60 sub-tile units a tick): 1536 / 60 = 25.6 ticks
+	EXPECT_NEAR(walkTicks, 26, 1);
 }
 
 } // namespace

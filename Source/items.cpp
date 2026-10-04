@@ -4,6 +4,7 @@
  * Implementation of item functionality.
  */
 #include "items.h"
+#include "d2probe.h"
 
 #include <algorithm>
 #include <bitset>
@@ -417,6 +418,7 @@ int ItemsGetCurrlevel()
 
 bool ItemPlace(Point position)
 {
+	D2_PROBE_FN();
 	if (dMonster[position.x][position.y] != 0)
 		return false;
 	if (dPlayer[position.x][position.y] != 0)
@@ -3080,6 +3082,7 @@ void CreatePlrItems(Player &player)
 
 bool ItemSpaceOk(Point position)
 {
+	D2_PROBE_FN();
 	if (!InDungeonBounds(position)) {
 		return false;
 	}
@@ -3659,6 +3662,7 @@ void CheckIdentify(Player &player, int cii)
 
 void DoRepair(Player &player, int cii)
 {
+	D2_PROBE_FN();
 	Item *pi;
 
 	PlaySfxLoc(IS_REPAIR, player.position.tile);
@@ -4018,6 +4022,7 @@ void PrintItemDur(const Item &item)
 
 void UseItem(size_t pnum, item_misc_id mid, SpellID spellID, int spellFrom)
 {
+	D2_PROBE_FN();
 	Player &player = Players[pnum];
 	std::optional<SpellID> prepareSpellID;
 
@@ -4613,6 +4618,7 @@ void PutItemRecord(uint32_t nSeed, uint16_t wCI, int nIndex)
 std::mt19937 BetterRng;
 std::string DebugSpawnItem(std::string itemName)
 {
+	D2_PROBE_FN();
 	if (ActiveItemCount >= MAXITEMS)
 		return "No space to generate the item!";
 
@@ -4660,6 +4666,7 @@ std::string DebugSpawnItem(std::string itemName)
 
 std::string DebugSpawnUniqueItem(std::string itemName)
 {
+	D2_PROBE_FN();
 	if (ActiveItemCount >= MAXITEMS)
 		return "No space to generate the item!";
 

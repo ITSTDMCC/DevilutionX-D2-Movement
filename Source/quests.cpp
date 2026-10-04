@@ -4,6 +4,7 @@
  * Implementation of functionality for handling quests.
  */
 #include "quests.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -229,6 +230,7 @@ void PrintQLString(const Surface &out, int x, int y, string_view str, bool marke
 
 void StartPWaterPurify()
 {
+	D2_PROBE_FN();
 	PlaySfxLoc(IS_QUESTDN, MyPlayer->position.tile);
 	LoadPalette("levels\\l3data\\l3pwater.pal", false);
 	UpdatePWaterPalette();
@@ -320,6 +322,7 @@ void InitialiseQuestPools(uint32_t seed, Quest quests[])
 
 void CheckQuests()
 {
+	D2_PROBE_FN();
 	if (gbIsSpawn)
 		return;
 

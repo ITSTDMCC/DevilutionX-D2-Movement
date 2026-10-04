@@ -9,6 +9,8 @@
 #endif
 
 #include "controls/plrctrls.h"
+#include "d2mod.h"
+#include "d2probe.h"
 #include "engine/events.hpp"
 #include "gmenu.h"
 #include "menu.h"
@@ -116,6 +118,7 @@ uint32_t DemoModeLastTick = 0;
 
 int LogicTick = 0;
 int StartTime = 0;
+Uint64 BenchStartCounter = 0;
 
 uint16_t DemoGraphicsWidth = 640;
 uint16_t DemoGraphicsHeight = 480;
@@ -540,8 +543,18 @@ bool IsRecording()
 
 bool GetRunGameLoop(bool &drawGame, bool &processInput)
 {
-	if (Demo_Message_Queue.empty())
+	if (Demo_Message_Queue.empty()) {
+		if (d2::MovementEnabled()) {
+			// Diablo 2 mod: the recorded clicks steer a faster hero, so the recording's own way out of the game
+			// (menu clicks at recorded moments) may not land; end the replay here instead of failing
+			d2probe::Event("DEMO_END input exhausted, game ended by the replay");
+			gbRunGame = false;
+			gbRunGameResult = false;
+			drawGame = false;
+			return false;
+		}
 		app_fatal("Demo queue empty");
+	}
 	const DemoMsg dmsg = Demo_Message_Queue.front();
 	LogDemoMessage(dmsg);
 	if (dmsg.type == DemoMsgType::Message)
@@ -574,8 +587,13 @@ bool GetRunGameLoop(bool &drawGame, bool &processInput)
 	}
 	ProgressToNextGameTick = dmsg.progressToNextGameTick;
 	Demo_Message_Queue.pop_front();
-	if (dmsg.type == DemoMsgType::GameTick)
+	if (dmsg.type == DemoMsgType::GameTick) {
 		LogicTick++;
+		// Diablo 2 mod harness: timing marks, so runs whose replays end at different points can be compared
+		// over the same stretch of frames
+		if (Timedemo && !HeadlessMode && LogicTick % 200 == 0)
+			SDL_Log("timedemo mark %d frames %.4f seconds", LogicTick, static_cast<double>(SDL_GetPerformanceCounter() - BenchStartCounter) / static_cast<double>(SDL_GetPerformanceFrequency()));
+	}
 	return dmsg.type == DemoMsgType::GameTick;
 }
 
@@ -702,6 +720,7 @@ void NotifyGameLoopStart()
 
 	if (IsRunning()) {
 		StartTime = SDL_GetTicks();
+		BenchStartCounter = SDL_GetPerformanceCounter();
 		LogicTick = 0;
 	}
 }
@@ -721,6 +740,7 @@ void NotifyGameLoopEnd()
 	if (IsRunning() && !HeadlessMode) {
 		float seconds = (SDL_GetTicks() - StartTime) / 1000.0f;
 		SDL_Log("%d frames, %.2f seconds: %.1f fps", LogicTick, seconds, LogicTick / seconds);
+		d2probe::RecordBench(LogicTick, seconds);
 		gbRunGameResult = false;
 		gbRunGame = false;
 

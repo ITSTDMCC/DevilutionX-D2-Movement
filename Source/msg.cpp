@@ -21,6 +21,7 @@
 #include "config.h"
 #include "control.h"
 #include "d2mod.h"
+#include "d2probe.h"
 #include "dead.h"
 #include "engine/backbuffer_state.hpp"
 #include "engine/random.hpp"
@@ -94,6 +95,7 @@ namespace {
 #ifdef LOG_RECEIVED_MESSAGES
 string_view CmdIdString(_cmd_id cmd)
 {
+	D2_PROBE_FN();
 	// clang-format off
 	switch (cmd) {
 	case CMD_STAND: return "CMD_STAND";
@@ -323,6 +325,7 @@ Point GetItemPosition(Point position)
  */
 bool WasPlayerCmdAlreadyRequested(_cmd_id bCmd, Point position = {}, uint16_t wParam1 = 0, uint16_t wParam2 = 0, uint16_t wParam3 = 0, uint16_t wParam4 = 0, uint16_t wParam5 = 0)
 {
+	D2_PROBE_FN();
 	switch (bCmd) {
 	// All known commands that result in a changed player action (player.destAction)
 	case _cmd_id::CMD_RATTACKID:
@@ -909,6 +912,7 @@ void NetSendCmdExtra(const TCmdGItem &item)
 
 size_t OnWalk(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE(msg_OnWalk);
 	const auto &message = *reinterpret_cast<const TCmdLoc *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -971,6 +975,7 @@ size_t OnAddVitality(const TCmd *pCmd, size_t pnum)
 
 size_t OnGotoGetItem(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLocParam1 *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -1215,6 +1220,7 @@ size_t OnGetItem(const TCmd *pCmd, size_t pnum)
 
 size_t OnGotoAutoGetItem(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLocParam1 *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -1304,6 +1310,7 @@ size_t OnItemExtra(const TCmd *pCmd, size_t pnum)
 
 size_t OnPutItem(const TCmd *pCmd, size_t pnum)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdPItem *>(pCmd);
 	const auto &player = Players[pnum];
 
@@ -1378,6 +1385,7 @@ size_t OnSyncPutItem(const TCmd *pCmd, size_t pnum)
 
 size_t OnAttackTile(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLoc *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -1393,6 +1401,7 @@ size_t OnAttackTile(const TCmd *pCmd, Player &player)
 
 size_t OnStandingAttackTile(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLoc *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -1408,6 +1417,7 @@ size_t OnStandingAttackTile(const TCmd *pCmd, Player &player)
 
 size_t OnRangedAttackTile(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLoc *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -1457,6 +1467,7 @@ bool InitNewSpell(Player &player, uint16_t wParamSpellID, uint16_t wParamSpellTy
 
 size_t OnSpellWall(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLocParam5 *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -1485,6 +1496,7 @@ size_t OnSpellWall(const TCmd *pCmd, Player &player)
 
 size_t OnSpellTile(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLocParam4 *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -1509,6 +1521,7 @@ size_t OnSpellTile(const TCmd *pCmd, Player &player)
 
 size_t OnObjectTileAction(const TCmd &cmd, Player &player, action_id action, bool pathToObject = true)
 {
+	D2_PROBE_FN();
 	const auto &message = reinterpret_cast<const TCmdLoc &>(cmd);
 	const Point position { message.x, message.y };
 	const Object *object = FindObjectAtPosition(position);
@@ -1526,6 +1539,7 @@ size_t OnObjectTileAction(const TCmd &cmd, Player &player, action_id action, boo
 
 size_t OnAttackMonster(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdParam1 *>(pCmd);
 	const uint16_t monsterIdx = SDL_SwapLE16(message.wParam1);
 
@@ -1542,6 +1556,7 @@ size_t OnAttackMonster(const TCmd *pCmd, Player &player)
 
 size_t OnAttackPlayer(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdParam1 *>(pCmd);
 	const uint16_t playerIdx = SDL_SwapLE16(message.wParam1);
 
@@ -1556,6 +1571,7 @@ size_t OnAttackPlayer(const TCmd *pCmd, Player &player)
 
 size_t OnRangedAttackMonster(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdParam1 *>(pCmd);
 	const uint16_t monsterIdx = SDL_SwapLE16(message.wParam1);
 
@@ -1570,6 +1586,7 @@ size_t OnRangedAttackMonster(const TCmd *pCmd, Player &player)
 
 size_t OnRangedAttackPlayer(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdParam1 *>(pCmd);
 	const uint16_t playerIdx = SDL_SwapLE16(message.wParam1);
 
@@ -1584,6 +1601,7 @@ size_t OnRangedAttackPlayer(const TCmd *pCmd, Player &player)
 
 size_t OnSpellMonster(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdParam5 *>(pCmd);
 
 	if (gbBufferMsgs == 1)
@@ -1607,6 +1625,7 @@ size_t OnSpellMonster(const TCmd *pCmd, Player &player)
 
 size_t OnSpellPlayer(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdParam5 *>(pCmd);
 
 	if (gbBufferMsgs == 1)
@@ -1676,6 +1695,7 @@ size_t OnHealOther(const TCmd *pCmd, const Player &caster)
 
 size_t OnTalkXY(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLocParam1 *>(pCmd);
 	const Point position { message.x, message.y };
 	const uint16_t townerIdx = SDL_SwapLE16(message.wParam1);
@@ -1770,6 +1790,7 @@ size_t OnKillGolem(const TCmd *pCmd, size_t pnum)
 
 size_t OnAwakeGolem(const TCmd *pCmd, size_t pnum)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdGolem *>(pCmd);
 	const Point position { message._mx, message._my };
 
@@ -2066,6 +2087,7 @@ size_t OnSendPlayerInfo(const TCmd *pCmd, size_t pnum)
 
 size_t OnPlayerJoinLevel(const TCmd *pCmd, size_t pnum)
 {
+	D2_PROBE_FN();
 	const auto &message = *reinterpret_cast<const TCmdLocParam2 *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -2347,6 +2369,7 @@ size_t OnSetReflect(const TCmd *pCmd, Player &player)
 
 size_t OnWalkFine(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE(msg_OnWalkFine);
 	const auto &message = *reinterpret_cast<const TCmdLocParam1 *>(pCmd);
 	const Point position { message.x, message.y };
 
@@ -2358,9 +2381,10 @@ size_t OnWalkFine(const TCmd *pCmd, Player &player)
 
 size_t OnSetRun(const TCmd *pCmd, Player &player)
 {
+	D2_PROBE(msg_OnSetRun);
 	const auto &message = *reinterpret_cast<const TCmdParam1 *>(pCmd);
 
-	if (gbBufferMsgs != 1)
+	if (gbBufferMsgs != 1 && d2::MovementEnabled())
 		player.isRunning = SDL_SwapLE16(message.wParam1) != 0;
 
 	return sizeof(message);
@@ -2834,6 +2858,7 @@ void NetSendCmdGolem(uint8_t mx, uint8_t my, Direction dir, uint8_t menemy, int 
 
 void NetSendCmdLoc(size_t playerId, bool bHiPri, _cmd_id bCmd, Point position)
 {
+	D2_PROBE(msg_NetSendCmdLoc);
 	if (playerId == MyPlayerId && WasPlayerCmdAlreadyRequested(bCmd, position))
 		return;
 
@@ -3178,6 +3203,7 @@ void delta_close_portal(int pnum)
 
 size_t ParseCmd(size_t pnum, const TCmd *pCmd)
 {
+	D2_PROBE_FN();
 	sbLastCmd = pCmd->bCmd;
 	if (sgwPackPlrOffsetTbl[pnum] != 0 && sbLastCmd != CMD_ACK_PLRINFO && sbLastCmd != CMD_SEND_PLRINFO)
 		return 0;

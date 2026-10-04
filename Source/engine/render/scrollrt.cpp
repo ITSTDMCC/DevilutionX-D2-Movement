@@ -12,6 +12,7 @@
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "d2mod.h"
+#include "d2probe.h"
 #include "dead.h"
 #include "doom.h"
 #include "engine/backbuffer_state.hpp"
@@ -95,6 +96,7 @@ std::unordered_multimap<Point, Missile *, PointHash> MissilesAtRenderingTile;
  */
 bool CouldMissileCollide(Point tile, bool checkPlayerAndMonster)
 {
+	D2_PROBE_FN();
 	if (!InDungeonBounds(tile))
 		return true;
 	if (checkPlayerAndMonster) {
@@ -442,6 +444,7 @@ void DrawPlayer(const Surface &out, const Player &player, Point tilePosition, Po
  */
 void DrawDeadPlayer(const Surface &out, Point tilePosition, Point targetBufferPosition)
 {
+	D2_PROBE_FN();
 	dFlags[tilePosition.x][tilePosition.y] &= ~DungeonFlag::DeadPlayer;
 
 	for (Player &player : Players) {
@@ -680,6 +683,7 @@ void DrawItem(const Surface &out, Point tilePosition, Point targetBufferPosition
  */
 void DrawMonsterHelper(const Surface &out, Point tilePosition, Point targetBufferPosition)
 {
+	D2_PROBE_FN();
 	int mi = dMonster[tilePosition.x][tilePosition.y];
 	bool isNegativeMonster = mi < 0;
 	mi = abs(mi) - 1;
@@ -743,6 +747,7 @@ void DrawMonsterHelper(const Surface &out, Point tilePosition, Point targetBuffe
  */
 void DrawPlayerHelper(const Surface &out, const Player &player, Point tilePosition, Point targetBufferPosition)
 {
+	D2_PROBE(scrollrt_DrawPlayerHelper);
 	Displacement offset = {};
 	if (player.isWalking()) {
 		offset = GetOffsetForWalking(player.AnimInfo, player._pdir);
@@ -763,6 +768,7 @@ void DrawPlayerHelper(const Surface &out, const Player &player, Point tilePositi
  */
 void DrawDungeon(const Surface &out, Point tilePosition, Point targetBufferPosition)
 {
+	D2_PROBE_FN();
 	assert(InDungeonBounds(tilePosition));
 
 	if (dRendered.test(tilePosition.x, tilePosition.y))
@@ -1001,6 +1007,7 @@ int tileRows;
 
 void CalcFirstTilePosition(Point &position, Displacement &offset)
 {
+	D2_PROBE(scrollrt_CalcFirstTilePosition);
 	// Adjust by player offset and tile grid alignment
 	Player &myPlayer = *MyPlayer;
 	offset = tileOffset;
@@ -1062,6 +1069,7 @@ void CalcFirstTilePosition(Point &position, Displacement &offset)
  */
 void DrawGame(const Surface &fullOut, Point position, Displacement offset)
 {
+	D2_PROBE(scrollrt_DrawGame);
 	// Limit rendering to the view area
 	const Surface &out = !*sgOptions.Graphics.zoom
 	    ? fullOut.subregionY(0, gnViewportHeight)
@@ -1557,6 +1565,7 @@ void ClearScreenBuffer()
 #ifdef _DEBUG
 void ScrollView()
 {
+	D2_PROBE_FN();
 	if (!MyPlayer->HoldItem.isEmpty())
 		return;
 
@@ -1643,6 +1652,7 @@ void scrollrt_draw_game_screen()
 
 void DrawAndBlit()
 {
+	D2_PROBE_FN();
 	if (!gbRunGame || HeadlessMode) {
 		return;
 	}

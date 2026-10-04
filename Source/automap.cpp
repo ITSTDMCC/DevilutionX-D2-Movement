@@ -10,6 +10,7 @@
 #include <fmt/format.h>
 
 #include "d2mod.h"
+#include "d2probe.h"
 #include "control.h"
 #include "engine/load_file.hpp"
 #include "engine/palette.h"
@@ -596,6 +597,7 @@ void DrawAutomapTile(const Surface &out, Point center, Point map)
 
 void SearchAutomapItem(const Surface &out, const Displacement &myPlayerOffset, int searchRadius, tl::function_ref<bool(Point position)> highlightTile)
 {
+	D2_PROBE_FN();
 	const Player &player = *MyPlayer;
 	Point tile = player.position.tile;
 	if (player._pmode == PM_WALK_SIDEWAYS) {
@@ -642,6 +644,7 @@ void SearchAutomapItem(const Surface &out, const Displacement &myPlayerOffset, i
  */
 void DrawAutomapPlr(const Surface &out, const Displacement &myPlayerOffset, int playerId)
 {
+	D2_PROBE(automap_DrawAutomapPlr);
 	int playerColor = MapColorsPlayer + (8 * playerId) % 128;
 
 	Player &player = Players[playerId];
@@ -891,6 +894,7 @@ void AutomapZoomOut()
 
 void DrawAutomap(const Surface &out)
 {
+	D2_PROBE(automap_DrawAutomap);
 	Automap = { (ViewPosition.x - 8) / 2, (ViewPosition.y - 8) / 2 };
 	if (leveltype != DTYPE_TOWN) {
 		Automap += { -4, -4 };

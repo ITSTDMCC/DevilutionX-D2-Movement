@@ -17,12 +17,13 @@
 
 namespace devilution {
 
-// Diablo 2 movement/combat mod: distinct IDs so modded and unmodded clients never join the same game.
-constexpr uint32_t GameIdDiabloFull = LoadBE32("DRT2");
-constexpr uint32_t GameIdDiabloSpawn = LoadBE32("DSH2");
-constexpr uint32_t GameIdHellfireFull = LoadBE32("HRT2");
-constexpr uint32_t GameIdHellfireSpawn = LoadBE32("HSH2");
-#define GAME_ID (gbIsHellfire ? (gbIsSpawn ? GameIdHellfireSpawn : GameIdHellfireFull) : (gbIsSpawn ? GameIdDiabloSpawn : GameIdDiabloFull))
+constexpr uint32_t GameIdDiabloFull = LoadBE32("DRTL");
+constexpr uint32_t GameIdDiabloSpawn = LoadBE32("DSHR");
+constexpr uint32_t GameIdHellfireFull = LoadBE32("HRTL");
+constexpr uint32_t GameIdHellfireSpawn = LoadBE32("HSHR");
+/** @brief Diablo 2 movement mod: while D2 movement is on, game IDs end in 2 so modded and stock clients never join the same game. */
+uint32_t D2ModGameId(uint32_t stockGameId);
+#define GAME_ID D2ModGameId(gbIsHellfire ? (gbIsSpawn ? GameIdHellfireSpawn : GameIdHellfireFull) : (gbIsSpawn ? GameIdDiabloSpawn : GameIdDiabloFull))
 
 #define NUMLEVELS 25
 

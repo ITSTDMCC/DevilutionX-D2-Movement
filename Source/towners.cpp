@@ -1,4 +1,5 @@
 #include "towners.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -904,6 +905,7 @@ void ProcessTowners()
 
 void TalkToTowner(Player &player, int t)
 {
+	D2_PROBE_FN();
 	auto &towner = Towners[t];
 
 	if (player.position.tile.WalkingDistance(towner.position) >= 2)
@@ -937,6 +939,7 @@ void UpdateCowFarmerAnimAfterQuestComplete()
 #ifdef _DEBUG
 bool DebugTalkToTowner(std::string targetName)
 {
+	D2_PROBE_FN();
 	SetupTownStores();
 	AsciiStrToLower(targetName);
 	Player &myPlayer = *MyPlayer;

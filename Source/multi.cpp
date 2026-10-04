@@ -5,6 +5,7 @@
  */
 
 #include <cstdint>
+#include "d2probe.h"
 #include <ctime>
 
 #include <SDL.h>
@@ -130,6 +131,7 @@ byte *CopyBufferedPackets(byte *destination, TBuffer *source, size_t *size)
 
 void NetReceivePlayerData(TPkt *pkt)
 {
+	D2_PROBE_FN();
 	const Player &myPlayer = *MyPlayer;
 	Point target = myPlayer.GetTargetPosition();
 	// Don't send desired target position when we will change our position soon.
@@ -153,6 +155,7 @@ void NetReceivePlayerData(TPkt *pkt)
 
 bool IsNetPlayerValid(const Player &player)
 {
+	D2_PROBE_FN();
 	return player._pLevel >= 1
 	    && player._pLevel <= MaxCharacterLevel
 	    && static_cast<uint8_t>(player._pClass) < enum_size<HeroClass>::value
@@ -357,6 +360,7 @@ void SendPlayerInfo(int pnum, _cmd_id cmd)
 
 void SetupLocalPositions()
 {
+	D2_PROBE_FN();
 	currlevel = 0;
 	leveltype = DTYPE_TOWN;
 	setlevel = false;
@@ -609,6 +613,7 @@ bool multi_handle_delta()
 
 void multi_process_network_packets()
 {
+	D2_PROBE_FN();
 	ClearPlayerLeftState();
 	ProcessTmsgs();
 
@@ -801,6 +806,7 @@ bool NetInit(bool bSinglePlayer)
 
 void recv_plrinfo(int pnum, const TCmdPlrInfoHdr &header, bool recv)
 {
+	D2_PROBE_FN();
 	static PlayerNetPack PackedPlayerBuffer[MAX_PLRS];
 
 	assert(pnum >= 0 && pnum < MAX_PLRS);

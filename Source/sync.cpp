@@ -4,6 +4,7 @@
  * Implementation of functionality for syncing game state with other players.
  */
 #include <climits>
+#include "d2probe.h"
 #include <cstdint>
 
 #include "levels/gendung.h"
@@ -23,6 +24,7 @@ int sgnSyncPInv;
 
 void SyncOneMonster()
 {
+	D2_PROBE_FN();
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
 		int m = ActiveMonsters[i];
 		auto &monster = Monsters[m];
@@ -152,6 +154,7 @@ void SyncPlrInv(TSyncHeader *pHdr)
 
 void SyncMonster(bool isOwner, const TSyncMonster &monsterSync)
 {
+	D2_PROBE_FN();
 	const int monsterId = monsterSync._mndx;
 	Monster &monster = Monsters[monsterId];
 	if (monster.hitPoints <= 0 || monster.mode == MonsterMode::Death) {

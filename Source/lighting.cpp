@@ -4,6 +4,7 @@
  * Implementation of light and vision.
  */
 #include "lighting.h"
+#include "d2probe.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -412,6 +413,7 @@ void MakeLightTable()
 #ifdef _DEBUG
 void ToggleLighting()
 {
+	D2_PROBE_FN();
 	DisableLighting = !DisableLighting;
 
 	if (DisableLighting) {
@@ -498,6 +500,7 @@ void ChangeLightRadius(int i, uint8_t radius)
 
 void ChangeLightXY(int i, Point position)
 {
+	D2_PROBE(lighting_ChangeLightXY);
 #ifdef _DEBUG
 	if (DisableLighting)
 		return;
@@ -516,6 +519,7 @@ void ChangeLightXY(int i, Point position)
 
 void ChangeLightOffset(int i, DisplacementOf<int8_t> offset)
 {
+	D2_PROBE(lighting_ChangeLightOffset);
 #ifdef _DEBUG
 	if (DisableLighting)
 		return;
@@ -617,6 +621,7 @@ void ChangeVisionRadius(int id, int r)
 
 void ChangeVisionXY(int id, Point position)
 {
+	D2_PROBE(lighting_ChangeVisionXY);
 	auto &vision = VisionList[id];
 	vision.hasChanged = true;
 	vision.position.old = vision.position.tile;

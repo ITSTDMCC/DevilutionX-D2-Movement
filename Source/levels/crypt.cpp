@@ -1,4 +1,5 @@
 #include "levels/crypt.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -725,6 +726,7 @@ void FixCryptDirtTiles()
 
 bool PlaceCryptStairs(lvl_entry entry)
 {
+	D2_PROBE_FN();
 	bool success = true;
 	std::optional<Point> position;
 

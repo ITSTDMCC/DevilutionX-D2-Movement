@@ -4,6 +4,7 @@
  * Implementation of save game functionality.
  */
 #include "loadsave.h"
+#include "d2probe.h"
 
 #include <climits>
 #include <cstdint>
@@ -338,6 +339,7 @@ void LoadAndValidateItemData(LoadHelper &file, Item &item)
 
 void LoadPlayer(LoadHelper &file, Player &player)
 {
+	D2_PROBE_FN();
 	player._pmode = static_cast<PLR_MODE>(file.NextLE<int32_t>());
 
 	for (int8_t &step : player.walkpath) {
@@ -1147,6 +1149,7 @@ void SaveItem(SaveHelper &file, const Item &item)
 
 void SavePlayer(SaveHelper &file, const Player &player)
 {
+	D2_PROBE_FN();
 	file.WriteLE<int32_t>(player._pmode);
 	for (int8_t step : player.walkpath)
 		file.WriteLE<int8_t>(step);
@@ -1397,6 +1400,7 @@ void SavePlayer(SaveHelper &file, const Player &player)
 
 void SaveMonster(SaveHelper *file, Monster &monster, MonsterConversionData *monsterConversionData = nullptr)
 {
+	D2_PROBE_FN();
 	file->WriteLE<int32_t>(monster.levelType);
 	file->WriteLE<int32_t>(static_cast<int>(monster.mode));
 	file->WriteLE<uint8_t>(static_cast<uint8_t>(monster.goal));
@@ -1791,6 +1795,7 @@ void LoadAdditionalMissiles()
 
 void SaveLevel(SaveWriter &saveWriter, LevelConversionData *levelConversionData)
 {
+	D2_PROBE_FN();
 	Player &myPlayer = *MyPlayer;
 
 	DoUnVision(myPlayer.position.tile, myPlayer._pLightRad); // fix for vision staying on the level
@@ -1870,6 +1875,7 @@ void SaveLevel(SaveWriter &saveWriter, LevelConversionData *levelConversionData)
 
 void LoadLevel(LevelConversionData *levelConversionData)
 {
+	D2_PROBE_FN();
 	char szName[MaxMpqPathSize];
 	std::optional<SaveReader> archive = OpenSaveArchive(gSaveNumber);
 	GetTempLevelNames(szName);
@@ -2308,6 +2314,7 @@ void RemoveEmptyInventory(Player &player)
 
 void LoadGame(bool firstflag)
 {
+	D2_PROBE_FN();
 	FreeGameMem();
 
 	LoadHelper file(OpenSaveArchive(gSaveNumber), "game");
@@ -2591,6 +2598,7 @@ void SaveStash(SaveWriter &stashWriter)
 
 void SaveGameData(SaveWriter &saveWriter)
 {
+	D2_PROBE_FN();
 	SaveHelper file(saveWriter, "game", 320 * 1024);
 
 	if (gbIsSpawn && !gbIsHellfire)

@@ -4,6 +4,7 @@
  * Implementation of functionality for handling town portals.
  */
 #include "portal.h"
+#include "d2probe.h"
 
 #include "lighting.h"
 #include "misdat.h"
@@ -158,6 +159,7 @@ void GetPortalLevel()
 
 void GetPortalLvlPos()
 {
+	D2_PROBE_FN();
 	if (leveltype == DTYPE_TOWN) {
 		ViewPosition = WarpDrop[portalindex] + Displacement { 1, 1 };
 	} else {

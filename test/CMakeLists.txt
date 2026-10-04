@@ -17,6 +17,8 @@ set(tests
   cursor_test
   d2mod_test
   d2glide_sim_test
+  d2harness_test
+  d2demo_test
   dead_test
   diablo_test
   drlg_common_test

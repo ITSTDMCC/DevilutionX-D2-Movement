@@ -1,0 +1,13 @@
+Diablo 1 with Diablo 2 movement (DevilutionX 1.5.3)
+====================================================
+
+Double-click devilutionx.exe.
+
+- Click anywhere to move straight to that exact point, at Diablo 2 speed.
+- R toggles running (on by default). Hold Left Ctrl to do the opposite for a moment.
+- Settings > Gameplay > "Diablo 2 Movement" off gives you stock Diablo 1 tile walking again
+  (takes effect for the next game). "Diablo 2 Combat" is off; everything except movement is stock.
+- While Diablo 2 movement is on, multiplayer games only see other players running this mod.
+
+Speeds come from Diablo 2 1.12: walk velocity 6 and run velocity 9 (charstats), 25 frames a second,
+which on Diablo 1's grid is 4.69 tiles/s walking and 7.03 tiles/s running (stock Diablo 1 walks 2.5).

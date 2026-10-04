@@ -4,6 +4,7 @@
  * Implementation of functionality for triggering events when the player enters an area.
  */
 #include "levels/trigs.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -859,6 +860,7 @@ void CheckTrigForce()
 
 void CheckTriggers()
 {
+	D2_PROBE(trigs_CheckTriggers);
 	Player &myPlayer = *MyPlayer;
 
 	if (myPlayer._pmode != PM_STAND)

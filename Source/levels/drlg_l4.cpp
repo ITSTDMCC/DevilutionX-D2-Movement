@@ -4,6 +4,7 @@
  * Implementation of the hell level generation algorithms.
  */
 #include "levels/drlg_l4.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -1083,6 +1084,7 @@ void GeneralFix()
 
 bool PlaceStairs(lvl_entry entry)
 {
+	D2_PROBE_FN();
 	std::optional<Point> position;
 
 	// Place stairs up

@@ -1,4 +1,5 @@
 #include "levels/town.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -357,6 +358,7 @@ void CleanTownFountain()
 
 void CreateTown(lvl_entry entry)
 {
+	D2_PROBE_FN();
 	dminPosition = { 10, 10 };
 	dmaxPosition = { 84, 84 };
 

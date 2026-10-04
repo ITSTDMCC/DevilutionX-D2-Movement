@@ -4,6 +4,7 @@
  * Implementation of object functionality, interaction, spawning, loading, etc.
  */
 #include <climits>
+#include "d2probe.h"
 #include <cstdint>
 #include <ctime>
 
@@ -308,6 +309,7 @@ _speech_id StoryText[3][3] = {
 
 bool RndLocOk(int xp, int yp)
 {
+	D2_PROBE_FN();
 	if (dMonster[xp][yp] != 0)
 		return false;
 	if (dPlayer[xp][yp] != 0)
@@ -1554,6 +1556,7 @@ void AddMushPatch()
 
 bool IsLightVisible(Object &light, int lightRadius)
 {
+	D2_PROBE_FN();
 #ifdef _DEBUG
 	if (DisableLighting)
 		return false;
@@ -1593,6 +1596,7 @@ void UpdateObjectLight(Object &light, int lightRadius)
 
 void UpdateCircle(Object &circle)
 {
+	D2_PROBE_FN();
 	Player *playerOnCircle = PlayerAtPosition(circle.position);
 
 	if (!playerOnCircle) {
@@ -1652,6 +1656,7 @@ void ObjectStopAnim(Object &object)
  */
 inline bool IsDoorClear(const Object &door)
 {
+	D2_PROBE_FN();
 	return dCorpse[door.position.x][door.position.y] == 0
 	    && dMonster[door.position.x][door.position.y] == 0
 	    && dItem[door.position.x][door.position.y] == 0
@@ -1688,6 +1693,7 @@ void ActivateTrapLine(int ttype, int tid)
 
 void UpdateFlameTrap(Object &trap)
 {
+	D2_PROBE_FN();
 	if (trap._oVar2 != 0) {
 		if (trap._oVar4 != 0) {
 			trap._oAnimFrame--;
@@ -1743,6 +1749,7 @@ void UpdateFlameTrap(Object &trap)
 
 void UpdateBurningCrossDamage(Object &cross)
 {
+	D2_PROBE_FN();
 	int damage[6] = { 6, 8, 10, 12, 10, 12 };
 
 	Player &myPlayer = *MyPlayer;
@@ -1943,6 +1950,7 @@ void OperateLever(Object &object, bool sendmsg)
 
 void OperateBook(Player &player, Object &book, bool sendmsg)
 {
+	D2_PROBE_FN();
 	if (book._oSelFlag == 0) {
 		return;
 	}
@@ -2117,6 +2125,7 @@ void OperateChamberOfBoneBook(Object &questBook, bool sendmsg)
 
 void OperateChest(const Player &player, Object &chest, bool sendLootMsg)
 {
+	D2_PROBE_FN();
 	if (chest._oSelFlag == 0) {
 		return;
 	}
@@ -2490,6 +2499,7 @@ void OperateShrineWeird(Player &player)
 
 void OperateShrineMagical(const Player &player)
 {
+	D2_PROBE_FN();
 	AddMissile(
 	    player.position.tile,
 	    player.position.tile,
@@ -2647,6 +2657,7 @@ void OperateShrineCostOfWisdom(Player &player, SpellID spellId, diablo_message m
 
 void OperateShrineCryptic(Player &player)
 {
+	D2_PROBE_FN();
 	AddMissile(
 	    player.position.tile,
 	    player.position.tile,
@@ -2745,6 +2756,7 @@ void OperateShrineDivine(Player &player, Point spawnPosition)
 
 void OperateShrineHoly(const Player &player)
 {
+	D2_PROBE_FN();
 	AddMissile(player.position.tile, { 0, 0 }, Direction::South, MissileID::Phasing, TARGET_MONSTERS, player.getId(), 0, 2 * leveltype);
 
 	if (&player != MyPlayer)
@@ -2895,6 +2907,7 @@ void OperateShrineTainted(const Player &player)
  */
 void OperateShrineOily(Player &player, Point spawnPosition)
 {
+	D2_PROBE_FN();
 	if (&player != MyPlayer)
 		return;
 
@@ -2979,6 +2992,7 @@ void OperateShrineMendicant(Player &player)
  */
 void OperateShrineSparkling(Player &player, Point spawnPosition)
 {
+	D2_PROBE_FN();
 	if (&player != MyPlayer)
 		return;
 
@@ -3006,6 +3020,7 @@ void OperateShrineSparkling(Player &player, Point spawnPosition)
  */
 void OperateShrineTown(const Player &player, Point spawnPosition)
 {
+	D2_PROBE_FN();
 	if (&player != MyPlayer)
 		return;
 
@@ -3326,6 +3341,7 @@ void OperateCauldron(Player &player, Object &object, _sfx_id sType)
 
 bool OperateFountains(Player &player, Object &fountain)
 {
+	D2_PROBE_FN();
 	bool applied = false;
 	switch (fountain._otype) {
 	case OBJ_BLOODFTN:
@@ -3563,6 +3579,7 @@ void BreakCrux(Object &crux, bool sendmsg)
 
 void BreakBarrel(const Player &player, Object &barrel, bool forcebreak, bool sendmsg)
 {
+	D2_PROBE_FN();
 	if (barrel._oSelFlag == 0)
 		return;
 	if (!forcebreak && &player != MyPlayer) {
@@ -4267,6 +4284,7 @@ bool UpdateTrapState(Object &trap)
 
 void OperateTrap(Object &trap)
 {
+	D2_PROBE_FN();
 	if (!UpdateTrapState(trap))
 		return;
 
@@ -4381,6 +4399,7 @@ void ProcessObjects()
 
 void RedoPlayerVision()
 {
+	D2_PROBE_FN();
 	for (const Player &player : Players) {
 		if (player.plractive && player.isOnActiveLevel()) {
 			ChangeVisionXY(player.getId(), player.position.tile);

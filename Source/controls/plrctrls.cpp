@@ -1,4 +1,5 @@
 #include "controls/plrctrls.h"
+#include "d2probe.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -95,6 +96,7 @@ const Direction FaceDir[3][3] = {
  */
 int GetRotaryDistance(Point destination)
 {
+	D2_PROBE_FN();
 	Player &myPlayer = *MyPlayer;
 
 	if (myPlayer.position.future == destination)
@@ -116,6 +118,7 @@ int GetRotaryDistance(Point destination)
  */
 int GetMinDistance(Point position)
 {
+	D2_PROBE_FN();
 	return MyPlayer->position.future.WalkingDistance(position);
 }
 
@@ -127,6 +130,7 @@ int GetMinDistance(Point position)
  */
 int GetDistance(Point destination, int maxDistance)
 {
+	D2_PROBE_FN();
 	if (GetMinDistance(destination) > maxDistance) {
 		return 0;
 	}
@@ -146,11 +150,13 @@ int GetDistance(Point destination, int maxDistance)
  */
 int GetDistanceRanged(Point destination)
 {
+	D2_PROBE_FN();
 	return MyPlayer->position.future.ExactDistance(destination);
 }
 
 void FindItemOrObject()
 {
+	D2_PROBE_FN();
 	WorldTilePosition futurePosition = MyPlayer->position.future;
 	int rotations = 5;
 
@@ -288,6 +294,7 @@ void FindRangedTarget()
 
 void FindMeleeTarget()
 {
+	D2_PROBE_FN();
 	bool visited[MAXDUNX][MAXDUNY] = { {} };
 	int maxSteps = 25; // Max steps for FindPath is 25
 	int rotations = 0;
@@ -368,6 +375,7 @@ void CheckMonstersNearby()
 
 void CheckPlayerNearby()
 {
+	D2_PROBE_FN();
 	int newDdistance;
 	int rotations = 0;
 	int distance = 0;
@@ -498,6 +506,7 @@ bool IsStandingGround()
 
 void Interact()
 {
+	D2_PROBE_FN();
 	if (leveltype == DTYPE_TOWN && pcursmonst != -1) {
 		NetSendCmdLocParam1(true, CMD_TALKXY, Towners[pcursmonst].position, pcursmonst);
 		return;
@@ -1260,6 +1269,7 @@ void SpellBookMove(AxisDirection dir)
  */
 bool IsPathBlocked(Point position, Direction dir)
 {
+	D2_PROBE_FN();
 	if (IsNoneOf(dir, Direction::North, Direction::East, Direction::South, Direction::West))
 		return false; // Steps along a major axis don't need to check corners
 
@@ -1276,6 +1286,7 @@ bool IsPathBlocked(Point position, Direction dir)
 
 void WalkInDir(size_t playerId, AxisDirection dir)
 {
+	D2_PROBE_FN();
 	Player &player = Players[playerId];
 
 	if (dir.x == AxisDirectionX_NONE && dir.y == AxisDirectionY_NONE) {
@@ -1918,6 +1929,7 @@ bool SpellHasActorTarget()
 
 void UpdateSpellTarget(SpellID spell)
 {
+	D2_PROBE_FN();
 	if (SpellHasActorTarget())
 		return;
 
@@ -1936,6 +1948,7 @@ void UpdateSpellTarget(SpellID spell)
  */
 bool TryDropItem()
 {
+	D2_PROBE_FN();
 	Player &myPlayer = *MyPlayer;
 
 	if (myPlayer.HoldItem.isEmpty()) {
@@ -2071,6 +2084,7 @@ void CtrlUseStashItem()
 
 void PerformSecondaryAction()
 {
+	D2_PROBE_FN();
 	Player &myPlayer = *MyPlayer;
 	if (invflag) {
 		if (pcurs > CURSOR_HAND && pcurs < CURSOR_FIRSTITEM) {

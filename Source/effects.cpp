@@ -4,6 +4,7 @@
  * Implementation of functions for loading and playing sounds.
  */
 #include "effects.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -1106,6 +1107,7 @@ void stream_stop()
 
 void PlaySFX(_sfx_id psfx)
 {
+	D2_PROBE(sound_PlaySFX);
 	psfx = RndSFX(psfx);
 
 	PlaySfxPriv(&sgSFX[psfx], false, { 0, 0 });
@@ -1113,6 +1115,7 @@ void PlaySFX(_sfx_id psfx)
 
 void PlaySfxLoc(_sfx_id psfx, Point position, bool randomizeByCategory)
 {
+	D2_PROBE(sound_PlaySfxLoc);
 	if (randomizeByCategory) {
 		psfx = RndSFX(psfx);
 	}

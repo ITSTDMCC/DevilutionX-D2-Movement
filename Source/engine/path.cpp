@@ -4,6 +4,7 @@
  * Implementation of the path finding algorithms.
  */
 #include "engine/path.h"
+#include "d2probe.h"
 
 #include <array>
 #include <cstdint>
@@ -345,6 +346,7 @@ bool IsTileWalkable(Point position, bool ignoreDoors)
 
 bool IsTileOccupied(Point position)
 {
+	D2_PROBE_FN();
 	if (!InDungeonBounds(position)) {
 		return true; // OOB positions are considered occupied.
 	}
@@ -367,6 +369,7 @@ bool IsTileOccupied(Point position)
 
 int FindPath(tl::function_ref<bool(Point)> posOk, Point startPosition, Point destinationPosition, int8_t path[MaxPathLength])
 {
+	D2_PROBE(path_FindPath);
 	/**
 	 * for reconstructing the path after the A* search is done. The longest
 	 * possible path is actually 24 steps, even though we can fit 25

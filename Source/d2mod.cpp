@@ -11,15 +11,19 @@
 #include <cstdint>
 
 #include <SDL.h>
+#include <fmt/format.h>
 
 #include "engine.h"
 #include "cursor.h"
+#include "d2probe.h"
+#include "effects.h"
 #include "engine/animationinfo.h"
 #include "levels/gendung.h"
 #include "lighting.h"
 #include "monster.h"
 #include "msg.h"
 #include "multi.h"
+#include "options.h"
 #include "player.h"
 #include "qol/autopickup.h"
 #include "utils/stdcompat/algorithm.hpp"
@@ -39,12 +43,14 @@ constexpr int8_t StepCodeByDisplacement[9] = { WALK_N, WALK_NE, WALK_E, WALK_NW,
 
 int8_t StepCode(Point from, Point to)
 {
+	D2_PROBE_FN();
 	return StepCodeByDisplacement[3 * (to.y - from.y) + 4 + (to.x - from.x)];
 }
 
 /** @brief Integer division rounding half away from zero, deterministic on every client. */
 int RoundedDiv(int numerator, int denominator)
 {
+	D2_PROBE_FN();
 	if (numerator >= 0)
 		return (2 * numerator + denominator) / (2 * denominator);
 	return -((-2 * numerator + denominator) / (2 * denominator));
@@ -53,11 +59,13 @@ int RoundedDiv(int numerator, int denominator)
 /** @brief Point @p i of @p n along the straight line from @p a to @p b. */
 Point PointOnLine(Point a, Point b, int i, int n)
 {
+	D2_PROBE_FN();
 	return { a.x + RoundedDiv(i * (b.x - a.x), n), a.y + RoundedDiv(i * (b.y - a.y), n) };
 }
 
 bool IsLineWalkable(tl::function_ref<bool(Point)> posOk, Point a, Point b)
 {
+	D2_PROBE_FN();
 	const int n = std::max(std::abs(b.x - a.x), std::abs(b.y - a.y));
 	Point previous = a;
 	for (int i = 1; i <= n; i++) {
@@ -69,10 +77,122 @@ bool IsLineWalkable(tl::function_ref<bool(Point)> posOk, Point a, Point b)
 	return true;
 }
 
+/**
+ * Diablo 2's tangent table (D2Common, 128 entries, also in D2MOO's Step.cpp): entry t is the unit vector
+ * at angle atan(t / 127) scaled to 4096 and rounded down, plus that angle in 64ths of a turn rounded down.
+ * Built with integer square roots so every client gets the same values.
+ */
+struct TangentTable {
+	D2Heading entries[128];
+
+	TangentTable()
+	    : entries {}
+	{
+		// First tangent of each 1/64 turn: the smallest t with atan(t / 127) >= k * 5.625 degrees
+		constexpr int AngleStarts[7] = { 13, 26, 39, 53, 68, 85, 105 };
+		for (int t = 0; t < 128; t++) {
+			const int64_t radiusSquared = 127 * 127 + t * t;
+			entries[t].x = static_cast<int32_t>(IntSqrtFloor(4096LL * 4096 * t * t / radiusSquared));
+			entries[t].y = static_cast<int32_t>(IntSqrtFloor(4096LL * 4096 * 127 * 127 / radiusSquared));
+			int angle = 0;
+			while (angle < 7 && t >= AngleStarts[angle])
+				angle++;
+			entries[t].dir64 = angle;
+		}
+	}
+
+	static int64_t IntSqrtFloor(int64_t value)
+	{
+		int64_t root = 0;
+		int64_t bit = int64_t { 1 } << 62;
+		while (bit > value)
+			bit >>= 2;
+		while (bit != 0) {
+			if (value >= root + bit) {
+				value -= root + bit;
+				root = (root >> 1) + bit;
+			} else {
+				root >>= 1;
+			}
+			bit >>= 2;
+		}
+		return root;
+	}
+};
+
+const TangentTable &GetTangentTable()
+{
+	D2_PROBE_FN();
+	static const TangentTable Table;
+	return Table;
+}
+
 } // namespace
+
+bool MovementEnabled()
+{
+	D2_PROBE_FN();
+	return *sgOptions.Gameplay.d2Movement;
+}
+
+bool CombatEnabled()
+{
+	D2_PROBE_FN();
+	return *sgOptions.Gameplay.d2Combat;
+}
+
+D2Heading D2TangentTableEntry(int tangent)
+{
+	D2_PROBE_FN();
+	return GetTangentTable().entries[clamp(tangent, 0, 127)];
+}
+
+D2Heading D2DirectionVector(int64_t dx, int64_t dy)
+{
+	D2_PROBE(d2_DirectionVector);
+	// Same steps as D2Common: fold the delta into the first octant, look up, then unfold
+	const bool towardsX = dx >= 0;
+	const bool towardsY = dy >= 0;
+	int64_t minor = std::abs(dx);
+	int64_t major = std::abs(dy);
+	const bool xIsMajor = minor > major;
+	if (xIsMajor)
+		std::swap(minor, major);
+	const int tangent = major != 0 ? static_cast<int>(127 * minor / major) : 0;
+	const D2Heading &entry = GetTangentTable().entries[tangent];
+
+	D2Heading heading;
+	int angle = entry.dir64;
+	if (!xIsMajor) {
+		heading.x = entry.x;
+		heading.y = entry.y;
+	} else {
+		heading.x = entry.y;
+		heading.y = entry.x;
+		angle = (-1 - angle) & 0xF;
+	}
+	if (!towardsY) {
+		heading.y = -heading.y;
+		angle = (-1 - angle) & 0x1F;
+	}
+	if (towardsX)
+		angle = (-1 - angle) & 0x3F;
+	else
+		heading.x = -heading.x;
+	heading.dir64 = (angle + 8) & 0x3F;
+	return heading;
+}
+
+Direction FacingFromDir64(int dir64)
+{
+	D2_PROBE_FN();
+	// 0 is +x+y (Diablo 1 South) and both games count towards +y (South West), 8 steps per sprite direction
+	return static_cast<Direction>(((dir64 + 4) >> 3) & 7);
+}
 
 Displacement WalkStepDisplacement(int8_t step)
 {
+	D2_PROBE_FN();
 	switch (step) {
 	case WALK_N: return { -1, -1 };
 	case WALK_NE: return { 0, -1 };
@@ -88,6 +208,7 @@ Displacement WalkStepDisplacement(int8_t step)
 
 int StraightenPath(tl::function_ref<bool(Point)> posOk, Point start, int8_t path[MaxPathLength], int length, uint8_t segmentLengths[MaxPathLength])
 {
+	D2_PROBE(d2_StraightenPath);
 	if (segmentLengths != nullptr) {
 		for (size_t k = 0; k < MaxPathLength; k++)
 			segmentLengths[k] = 0;
@@ -145,16 +266,19 @@ namespace {
 /** Tile containing a sub-tile coordinate (tile centres are at multiples of SubTile). */
 int TileOf(int32_t v)
 {
+	D2_PROBE_FN();
 	return static_cast<int>((v + SubTile / 2) >> 8);
 }
 
 Point TileOf(int32_t x, int32_t y)
 {
+	D2_PROBE_FN();
 	return { TileOf(x), TileOf(y) };
 }
 
 int64_t IntSqrt(int64_t value)
 {
+	D2_PROBE_FN();
 	if (value <= 0)
 		return 0;
 	int64_t x = value;
@@ -166,49 +290,10 @@ int64_t IntSqrt(int64_t value)
 	return x;
 }
 
-/** Nearest of the 8 sprite directions to a screen space vector. */
-Direction ScreenFacing(int64_t vx, int64_t vy, Direction fallback)
-{
-	if (vx == 0 && vy == 0)
-		return fallback;
-	struct Candidate {
-		Direction dir;
-		int64_t ux;
-		int64_t uy;
-	};
-	// Unit vectors (x1000) of each sprite direction as drawn on screen
-	constexpr Candidate Candidates[8] = {
-		{ Direction::South, 0, 1000 },
-		{ Direction::SouthWest, -894, 447 },
-		{ Direction::West, -1000, 0 },
-		{ Direction::NorthWest, -894, -447 },
-		{ Direction::North, 0, -1000 },
-		{ Direction::NorthEast, 894, -447 },
-		{ Direction::East, 1000, 0 },
-		{ Direction::SouthEast, 894, 447 },
-	};
-	Direction best = fallback;
-	int64_t bestScore = INT64_MIN;
-	for (const Candidate &candidate : Candidates) {
-		const int64_t score = candidate.ux * vx + candidate.uy * vy;
-		if (score > bestScore) {
-			bestScore = score;
-			best = candidate.dir;
-		}
-	}
-	return best;
-}
-
-/** Facing for moving by a world (tile space) vector. */
-Direction WorldFacing(int64_t dx, int64_t dy, Direction fallback)
-{
-	// Same projection the renderer uses: one tile is 64 pixels wide and 32 pixels high
-	return ScreenFacing((dx - dy) * 32, (dx + dy) * 16, fallback);
-}
-
 /** Can the hero step from tile @p from into the neighbouring tile @p to? */
 bool CanCross(const Player &player, Point from, Point to)
 {
+	D2_PROBE_FN();
 	if (from == to)
 		return true;
 	if (std::abs(to.x - from.x) > 1 || std::abs(to.y - from.y) > 1)
@@ -221,6 +306,7 @@ bool CanCross(const Player &player, Point from, Point to)
 /** Is the straight line between two sub-tile points free of obstacles? */
 bool IsSubTileLineClear(const Player &player, int32_t fromX, int32_t fromY, int32_t toX, int32_t toY)
 {
+	D2_PROBE_FN();
 	const int64_t dx = toX - fromX;
 	const int64_t dy = toY - fromY;
 	const int64_t length = IntSqrt(dx * dx + dy * dy);
@@ -243,6 +329,7 @@ bool IsSubTileLineClear(const Player &player, int32_t fromX, int32_t fromY, int3
 /** Put the hero's sub-tile position back on their tile if something else moved them. */
 void EnsurePosition(Player &player)
 {
+	D2_PROBE_FN();
 	FreeMoveState &move = player.freeMove;
 	if (move.valid && TileOf(move.x, move.y) == player.position.tile)
 		return;
@@ -254,11 +341,13 @@ void EnsurePosition(Player &player)
 
 bool IsRunning(const Player &player)
 {
+	D2_PROBE_FN();
 	return player.isRunning || (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0);
 }
 
 void UpdateLightOffset(const Player &player)
 {
+	D2_PROBE_FN();
 	if (player.lightId == NO_LIGHT)
 		return;
 	const FreeMoveState &move = player.freeMove;
@@ -271,6 +360,9 @@ void UpdateLightOffset(const Player &player)
 /** Move the hero to a sub-tile point no more than a tile away, switching tiles when needed. */
 bool MoveTo(Player &player, int32_t x, int32_t y)
 {
+	D2_PROBE(d2_MoveTo);
+	if (player._pmode != PM_STAND)
+		d2probe::Fail("moved_outside_stand", fmt::format("p{} mode={}", player.getId(), static_cast<int>(player._pmode)));
 	FreeMoveState &move = player.freeMove;
 	const Point from = player.position.tile;
 	const Point to = TileOf(x, y);
@@ -304,6 +396,7 @@ bool MoveTo(Player &player, int32_t x, int32_t y)
 
 void SetFacing(Player &player, Direction facing)
 {
+	D2_PROBE_FN();
 	FreeMoveState &move = player.freeMove;
 	if (move.animating && facing == move.facing)
 		return;
@@ -312,6 +405,8 @@ void SetFacing(Player &player, Direction facing)
 	if (!move.animating) {
 		NewPlrAnim(player, player_graphic::Walk, facing);
 		move.animating = true;
+		move.animCarry = 0;
+		move.lastStepFrame = -1;
 		return;
 	}
 	// Turn without restarting the stride
@@ -323,8 +418,21 @@ void SetFacing(Player &player, Direction facing)
 	}
 }
 
+void PlayFootstep(Player &player, bool running)
+{
+	D2_PROBE_FN();
+	FreeMoveState &move = player.freeMove;
+	const int8_t frame = player.AnimInfo.currentFrame;
+	if (frame == move.lastStepFrame)
+		return;
+	move.lastStepFrame = frame;
+	if (*sgOptions.Audio.walkingSound && !running && (frame == 0 || frame == 4))
+		PlaySfxLoc(PS_WALK1, player.position.tile);
+}
+
 void FinishMoving(Player &player)
 {
+	D2_PROBE_FN();
 	FreeMoveState &move = player.freeMove;
 	move.active = false;
 	if (move.animating) {
@@ -343,6 +451,7 @@ int32_t CursorFineY = 0;
 
 void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool endspace)
 {
+	D2_PROBE(d2_FreeMoveSetTarget);
 	EnsurePosition(player);
 	FreeMoveState &move = player.freeMove;
 	const Point start = player.position.tile;
@@ -353,6 +462,8 @@ void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool en
 
 	move.waypointCount = 0;
 	move.waypointIndex = 0;
+	move.carryX = 0;
+	move.carryY = 0;
 
 	if (endspace && IsSubTileLineClear(player, move.x, move.y, targetX, targetY)) {
 		// Nothing in the way: head straight for the exact point
@@ -400,6 +511,9 @@ void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool en
 
 void FreeMoveTick(Player &player)
 {
+	if (!MovementEnabled())
+		return;
+	D2_PROBE(d2_FreeMoveTick);
 	EnsurePosition(player);
 	FreeMoveState &move = player.freeMove;
 	if (player._pmode != PM_STAND) {
@@ -413,15 +527,20 @@ void FreeMoveTick(Player &player)
 		return;
 	}
 
-	int64_t budget = IsRunning(player) ? RunSpeed : WalkSpeed;
+	// Diablo 2 path step: each frame the unit moves velocity units along the table heading towards the
+	// current path point, re-aiming after every step and carrying on to the next point once it is reached.
+	const bool running = IsRunning(player);
+	const int32_t speed = running ? RunSpeed : WalkSpeed;
+	const int32_t startX = move.x;
+	const int32_t startY = move.y;
+	const uint8_t startWaypoint = move.waypointIndex;
+	int64_t budget = speed;
 	while (budget > 0 && move.active) {
 		const int32_t wx = move.waypointX[move.waypointIndex];
 		const int32_t wy = move.waypointY[move.waypointIndex];
 		const int64_t dx = wx - move.x;
 		const int64_t dy = wy - move.y;
 		const int64_t distance = IntSqrt(dx * dx + dy * dy);
-		if (distance > 0)
-			SetFacing(player, WorldFacing(dx, dy, move.facing));
 
 		int32_t nextX;
 		int32_t nextY;
@@ -429,14 +548,26 @@ void FreeMoveTick(Player &player)
 			nextX = wx;
 			nextY = wy;
 			budget -= distance;
+			move.carryX = 0;
+			move.carryY = 0;
+			if (distance > 0)
+				SetFacing(player, FacingFromDir64(D2DirectionVector(dx, dy).dir64));
 		} else {
-			nextX = move.x + static_cast<int32_t>(dx * budget / distance);
-			nextY = move.y + static_cast<int32_t>(dy * budget / distance);
+			const D2Heading heading = D2DirectionVector(dx, dy);
+			SetFacing(player, FacingFromDir64(heading.dir64));
+			// Keep the remainder for the next tick, so rounding never adds up to a speed or direction error
+			const int64_t fineX = budget * heading.x + move.carryX;
+			const int64_t fineY = budget * heading.y + move.carryY;
+			nextX = move.x + static_cast<int32_t>(fineX >> 12);
+			nextY = move.y + static_cast<int32_t>(fineY >> 12);
+			move.carryX = static_cast<int32_t>(fineX & 0xFFF);
+			move.carryY = static_cast<int32_t>(fineY & 0xFFF);
 			budget = 0;
 		}
 
 		if (!MoveTo(player, nextX, nextY)) {
 			// Something stepped into the way
+			D2_PROBE(d2_MoveBlocked);
 			FinishMoving(player);
 			return;
 		}
@@ -453,32 +584,53 @@ void FreeMoveTick(Player &player)
 		return;
 	}
 
-	// The walk cycle is timed for walking speed; play it faster while running
-	if (IsRunning(player)) {
-		move.extraFrame = !move.extraFrame;
-		if (move.extraFrame)
-			player.AnimInfo.processAnimation();
+	if (move.waypointIndex == startWaypoint) {
+		// A whole tick on one straight leg: the distance covered is exactly the speed
+		const int64_t movedX = move.x - startX;
+		const int64_t movedY = move.y - startY;
+		d2probe::RecordMoveTick(running, IntSqrt(movedX * movedX + movedY * movedY));
+	}
+
+	// The engine shows one walk frame per tick, which is Diablo 1 walking speed; show extra frames to keep the
+	// stride in step with the faster Diablo 2 speeds. Footsteps follow the Diablo 1 rule: frames 0 and 4, walking only.
+	PlayFootstep(player, running);
+	move.animCarry += speed - D1WalkCycleSpeed;
+	while (move.animCarry >= D1WalkCycleSpeed) {
+		move.animCarry -= D1WalkCycleSpeed;
+		player.AnimInfo.processAnimation();
+		PlayFootstep(player, running);
 	}
 }
 
 bool FreeMoveActive(const Player &player)
 {
+	D2_PROBE_FN();
 	return player.freeMove.active;
 }
 
 void FreeMoveStop(Player &player)
 {
+	D2_PROBE(d2_FreeMoveStop);
 	// The walk animation is replaced by whatever the hero does next, or by standing on the next tick
 	player.freeMove.active = false;
 }
 
+void FreeMoveInterrupt(Player &player)
+{
+	D2_PROBE(d2_FreeMoveInterrupt);
+	player.freeMove.active = false;
+	player.freeMove.animating = false;
+}
+
 void FreeMoveReset(Player &player)
 {
+	D2_PROBE(d2_FreeMoveReset);
 	player.freeMove = {};
 }
 
 Point FreeMoveTargetTile(const Player &player)
 {
+	D2_PROBE(d2_FreeMoveTargetTile);
 	const FreeMoveState &move = player.freeMove;
 	if (!move.active || move.waypointCount == 0)
 		return player.position.tile;
@@ -487,6 +639,9 @@ Point FreeMoveTargetTile(const Player &player)
 
 Displacement GlideCorrection(const Player &player)
 {
+	D2_PROBE(d2_GlideCorrection);
+	if (!MovementEnabled())
+		return {};
 	const FreeMoveState &move = player.freeMove;
 	if (!move.valid || TileOf(move.x, move.y) != player.position.tile)
 		return {};
@@ -498,12 +653,14 @@ Displacement GlideCorrection(const Player &player)
 
 void SetCursorFine(int32_t x, int32_t y)
 {
+	D2_PROBE(d2_SetCursorFine);
 	CursorFineX = x;
 	CursorFineY = y;
 }
 
 void SendWalkToCursor(bool force)
 {
+	D2_PROBE(d2_SendWalkToCursor);
 	const Point tile = TileOf(CursorFineX, CursorFineY);
 	if (tile != cursPosition) {
 		// The cursor code snapped to something else (a trigger, the edge of the map, ...): aim at its centre
@@ -528,6 +685,9 @@ void SendWalkToCursor(bool force)
 
 void OnWalkFine(Player &player, Point tile, uint16_t packedFine)
 {
+	D2_PROBE(d2_OnWalkFine);
+	if (!MovementEnabled())
+		return;
 	const int fineX = static_cast<int>(packedFine & 0xFF) - SubTile / 2;
 	const int fineY = static_cast<int>(packedFine >> 8) - SubTile / 2;
 	ClrPlrPath(player);
@@ -537,6 +697,7 @@ void OnWalkFine(Player &player, Point tile, uint16_t packedFine)
 
 int ChanceToHit(int attackRating, int defense, int attackerLevel, int defenderLevel)
 {
+	D2_PROBE(d2_ChanceToHit);
 	attackRating = std::max(attackRating * AttackRatingScale, 1);
 	defense = std::max(defense, 0);
 	attackerLevel = std::max(attackerLevel, 1);
@@ -550,11 +711,13 @@ int ChanceToHit(int attackRating, int defense, int attackerLevel, int defenderLe
 
 int ClampChanceToHit(int chance)
 {
+	D2_PROBE_FN();
 	return clamp(chance, MinChanceToHit, MaxChanceToHit);
 }
 
 int PlayerMeleeChanceToHit(const Player &player, const Monster &monster)
 {
+	D2_PROBE_FN();
 	return ChanceToHit(
 	    player.GetMeleePiercingToHit(),
 	    player.CalculateArmorPierce(monster.armorClass, true),
@@ -564,6 +727,7 @@ int PlayerMeleeChanceToHit(const Player &player, const Monster &monster)
 
 int PlayerRangedChanceToHit(const Player &player, const Monster &monster)
 {
+	D2_PROBE_FN();
 	return ChanceToHit(
 	    player.GetRangedPiercingToHit(),
 	    player.CalculateArmorPierce(monster.armorClass, false),
@@ -573,6 +737,7 @@ int PlayerRangedChanceToHit(const Player &player, const Monster &monster)
 
 int MonsterChanceToHit(const Monster &monster, const Player &player, int monsterToHit, int armor)
 {
+	D2_PROBE_FN();
 	return ChanceToHit(
 	    monsterToHit + MonsterBaseAttackRating,
 	    armor,
@@ -582,6 +747,7 @@ int MonsterChanceToHit(const Monster &monster, const Player &player, int monster
 
 int PlayerVsPlayerChanceToHit(const Player &attacker, const Player &target, bool ranged)
 {
+	D2_PROBE_FN();
 	return ChanceToHit(
 	    ranged ? attacker.GetRangedToHit() : attacker.GetMeleeToHit(),
 	    target.GetArmor(),
@@ -591,6 +757,7 @@ int PlayerVsPlayerChanceToHit(const Player &attacker, const Player &target, bool
 
 bool PlayerFlinches(const Player &player, int dam)
 {
+	D2_PROBE(d2_PlayerFlinches);
 	if (dam <= 0)
 		return false;
 	int divisor = player._pClass == HeroClass::Barbarian ? BarbarianHitRecoveryDivisor : PlayerHitRecoveryDivisor;
@@ -599,6 +766,7 @@ bool PlayerFlinches(const Player &player, int dam)
 
 bool MonsterFlinches(const Monster &monster, int dam)
 {
+	D2_PROBE(d2_MonsterFlinches);
 	if (dam <= 0)
 		return false;
 	return dam >= monster.maxHitPoints / MonsterHitRecoveryDivisor;
@@ -606,12 +774,16 @@ bool MonsterFlinches(const Monster &monster, int dam)
 
 void ToggleRun()
 {
+	D2_PROBE(d2_ToggleRun);
+	if (!MovementEnabled())
+		return;
 	RunToggled = !RunToggled;
 }
 
 void UpdateLocalRunState()
 {
-	if (MyPlayer == nullptr)
+	D2_PROBE(d2_UpdateLocalRunState);
+	if (!MovementEnabled() || MyPlayer == nullptr)
 		return;
 
 	bool wantsToRun = RunToggled;
@@ -627,9 +799,19 @@ void UpdateLocalRunState()
 
 void ShareRunState()
 {
+	D2_PROBE(d2_ShareRunState);
 	LastSentRunState = -1;
 }
 
 } // namespace d2
+
+uint32_t D2ModGameId(uint32_t stockGameId)
+{
+	D2_PROBE_FN();
+	if (!d2::MovementEnabled())
+		return stockGameId;
+	// Replace the last letter with '2' (DRTL -> DRT2, HSHR -> HSH2)
+	return (stockGameId & 0xFFFFFF00U) | static_cast<uint32_t>('2');
+}
 
 } // namespace devilution

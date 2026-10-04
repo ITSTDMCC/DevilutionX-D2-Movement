@@ -12,6 +12,7 @@
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "d2mod.h"
+#include "d2probe.h"
 #include "dead.h"
 #ifdef _DEBUG
 #include "debug.h"
@@ -69,6 +70,7 @@ struct DirectionSettings {
 
 void UpdatePlayerLightOffset(Player &player)
 {
+	D2_PROBE_FN();
 	if (player.lightId == NO_LIGHT)
 		return;
 
@@ -78,12 +80,14 @@ void UpdatePlayerLightOffset(Player &player)
 
 void WalkNorthwards(Player &player, const DirectionSettings &walkParams)
 {
+	D2_PROBE_FN();
 	dPlayer[player.position.future.x][player.position.future.y] = -(player.getId() + 1);
 	player.position.temp = player.position.tile + walkParams.tileAdd;
 }
 
 void WalkSouthwards(Player &player, const DirectionSettings & /*walkParams*/)
 {
+	D2_PROBE_FN();
 	const size_t playerId = player.getId();
 	dPlayer[player.position.tile.x][player.position.tile.y] = -(playerId + 1);
 	player.position.temp = player.position.tile;
@@ -96,6 +100,7 @@ void WalkSouthwards(Player &player, const DirectionSettings & /*walkParams*/)
 
 void WalkSideways(Player &player, const DirectionSettings &walkParams)
 {
+	D2_PROBE_FN();
 	Point const nextPosition = player.position.tile + walkParams.map;
 
 	const size_t playerId = player.getId();
@@ -125,6 +130,7 @@ constexpr std::array<const DirectionSettings, 8> WalkSettings { {
 
 bool PlrDirOK(const Player &player, Direction dir)
 {
+	D2_PROBE_FN();
 	Point position = player.position.tile;
 	Point futurePosition = position + dir;
 	if (futurePosition.x < 0 || !PosOkPlayer(player, futurePosition)) {
@@ -144,6 +150,7 @@ bool PlrDirOK(const Player &player, Direction dir)
 
 void HandleWalkMode(Player &player, Direction dir)
 {
+	D2_PROBE_FN();
 	const auto &dirModeParams = WalkSettings[static_cast<size_t>(dir)];
 	SetPlayerOld(player);
 	if (!PlrDirOK(player, dir)) {
@@ -163,11 +170,13 @@ void HandleWalkMode(Player &player, Direction dir)
 
 bool IsPlayerRunning(const Player &player)
 {
-	return player.isRunning || (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0);
+	D2_PROBE(player_IsPlayerRunning);
+	return (d2::MovementEnabled() && player.isRunning) || (leveltype == DTYPE_TOWN && sgGameInitInfo.bRunInTown != 0);
 }
 
 void StartWalkAnimation(Player &player, Direction dir, bool pmWillBeCalled)
 {
+	D2_PROBE(player_StartWalkAnimation);
 	int8_t skippedFrames = -2;
 	if (IsPlayerRunning(player))
 		skippedFrames = 2;
@@ -181,6 +190,7 @@ void StartWalkAnimation(Player &player, Direction dir, bool pmWillBeCalled)
  */
 void StartWalk(Player &player, Direction dir, bool pmWillBeCalled)
 {
+	D2_PROBE(player_StartWalk);
 	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
@@ -192,6 +202,7 @@ void StartWalk(Player &player, Direction dir, bool pmWillBeCalled)
 
 void ClearStateVariables(Player &player)
 {
+	D2_PROBE_FN();
 	player.position.temp = { 0, 0 };
 	player.tempDirection = Direction::South;
 	player.queuedSpell.spellLevel = 0;
@@ -242,6 +253,7 @@ void StartAttack(Player &player, Direction d, bool includesFirstFrame)
 
 void StartRangeAttack(Player &player, Direction d, WorldTileCoord cx, WorldTileCoord cy, bool includesFirstFrame)
 {
+	D2_PROBE_FN();
 	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
@@ -282,6 +294,7 @@ player_graphic GetPlayerGraphicForSpell(SpellID spellId)
 
 void StartSpell(Player &player, Direction d, WorldTileCoord cx, WorldTileCoord cy)
 {
+	D2_PROBE_FN();
 	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
@@ -341,6 +354,7 @@ void RespawnDeadItem(Item &&itm, Point target)
 
 void DeadItem(Player &player, Item &&itm, Displacement direction)
 {
+	D2_PROBE_FN();
 	if (itm.isEmpty())
 		return;
 
@@ -402,6 +416,7 @@ void DropHalfPlayersGold(Player &player)
 
 void InitLevelChange(Player &player)
 {
+	D2_PROBE(player_InitLevelChange);
 	Player &myPlayer = *MyPlayer;
 
 	RemovePlrMissiles(player);
@@ -418,9 +433,11 @@ void InitLevelChange(Player &player)
 		stream_stop();
 	}
 
-	// Make sure everyone on the level knows whether we are walking or running
-	d2::ShareRunState();
-	d2::FreeMoveReset(player);
+	if (d2::MovementEnabled()) {
+		// Make sure everyone on the level knows whether we are walking or running
+		d2::ShareRunState();
+		d2::FreeMoveReset(player);
+	}
 
 	FixPlrWalkTags(player);
 	SetPlayerOld(player);
@@ -444,6 +461,7 @@ void InitLevelChange(Player &player)
  */
 bool DoWalk(Player &player, int variant)
 {
+	D2_PROBE(player_DoWalk);
 	// Play walking sound effect on certain animation frames
 	if (*sgOptions.Audio.walkingSound && !IsPlayerRunning(player)) {
 		if (player.AnimInfo.currentFrame == 0
@@ -581,6 +599,7 @@ bool DamageWeapon(Player &player, unsigned damageFrequency)
 
 bool PlrHitMonst(Player &player, Monster &monster, bool adjacentDamage = false)
 {
+	D2_PROBE(player_PlrHitMonst);
 	int hper = 0;
 
 	if (!monster.isPossibleToHit())
@@ -598,8 +617,13 @@ bool PlrHitMonst(Player &player, Monster &monster, bool adjacentDamage = false)
 		hit = 0;
 	}
 
-	hper += d2::PlayerMeleeChanceToHit(player, monster);
-	hper = d2::ClampChanceToHit(hper);
+	if (d2::CombatEnabled()) {
+		hper += d2::PlayerMeleeChanceToHit(player, monster);
+		hper = d2::ClampChanceToHit(hper);
+	} else {
+		hper += player.GetMeleePiercingToHit() - player.CalculateArmorPierce(monster.armorClass, true);
+		hper = clamp(hper, 5, 95);
+	}
 
 	if (monster.tryLiftGargoyle())
 		return true;
@@ -752,6 +776,7 @@ bool PlrHitMonst(Player &player, Monster &monster, bool adjacentDamage = false)
 
 bool PlrHitPlr(Player &attacker, Player &target)
 {
+	D2_PROBE(player_PlrHitPlr);
 	if (target._pInvincible) {
 		return false;
 	}
@@ -762,7 +787,13 @@ bool PlrHitPlr(Player &attacker, Player &target)
 
 	int hit = GenerateRnd(100);
 
-	int hper = d2::ClampChanceToHit(d2::PlayerVsPlayerChanceToHit(attacker, target, false));
+	int hper;
+	if (d2::CombatEnabled()) {
+		hper = d2::ClampChanceToHit(d2::PlayerVsPlayerChanceToHit(attacker, target, false));
+	} else {
+		hper = attacker.GetMeleeToHit() - target.GetArmor();
+		hper = clamp(hper, 5, 95);
+	}
 
 	int blk = 100;
 	if ((target._pmode == PM_STAND || target._pmode == PM_ATTACK) && target._pBlockFlag) {
@@ -826,6 +857,7 @@ bool PlrHitObj(const Player &player, Object &targetObject)
 
 bool DoAttack(Player &player)
 {
+	D2_PROBE_FN();
 	if (player.AnimInfo.currentFrame == player._pAFNum - 2) {
 		PlaySfxLoc(PS_SWING, player.position.tile);
 	}
@@ -911,6 +943,7 @@ bool DoAttack(Player &player)
 
 bool DoRangeAttack(Player &player)
 {
+	D2_PROBE_FN();
 	int arrows = 0;
 	if (player.AnimInfo.currentFrame == player._pAFNum - 1) {
 		arrows = 1;
@@ -1062,6 +1095,7 @@ void DamageArmor(Player &player)
 
 bool DoSpell(Player &player)
 {
+	D2_PROBE_FN();
 	if (player.AnimInfo.currentFrame == player._pSFNum) {
 		CastSpell(
 		    player.getId(),
@@ -1103,6 +1137,7 @@ bool DoGotHit(Player &player)
 
 bool DoDeath(Player &player)
 {
+	D2_PROBE_FN();
 	if (player.AnimInfo.isLastFrame()) {
 		if (player.AnimInfo.tickCounterOfCurrentFrame == 0) {
 			player.AnimInfo.ticksPerFrame = 100;
@@ -1120,6 +1155,7 @@ bool DoDeath(Player &player)
 
 bool IsPlayerAdjacentToObject(Player &player, Object &object)
 {
+	D2_PROBE_FN();
 	int x = abs(player.position.tile.x - object.position.x);
 	int y = abs(player.position.tile.y - object.position.y);
 	if (y > 1 && object.position.y >= 1 && FindObjectAtPosition(object.position + Direction::NorthEast) == &object) {
@@ -1154,6 +1190,7 @@ void TryDisarm(const Player &player, Object &object)
 
 void CheckNewPath(Player &player, bool pmWillBeCalled)
 {
+	D2_PROBE(player_CheckNewPath);
 	int x = 0;
 	int y = 0;
 
@@ -1764,6 +1801,7 @@ int Player::GetMaximumAttributeValue(CharacterAttribute attribute) const
 
 Point Player::GetTargetPosition() const
 {
+	D2_PROBE(player_GetTargetPosition);
 	if (d2::FreeMoveActive(*this))
 		return d2::FreeMoveTargetTile(*this);
 
@@ -1828,12 +1866,14 @@ void Player::Say(HeroSpeech speechId, int delay) const
 
 void Player::Stop()
 {
+	D2_PROBE_FN();
 	ClrPlrPath(*this);
 	destAction = ACTION_NONE;
 }
 
 bool Player::isWalking() const
 {
+	D2_PROBE_FN();
 	return IsAnyOf(_pmode, PM_WALK_NORTHWARDS, PM_WALK_SOUTHWARDS, PM_WALK_SIDEWAYS);
 }
 
@@ -1883,6 +1923,7 @@ void Player::ReadySpellFromEquipment(inv_body_loc bodyLocation, bool forceSpell)
 
 player_graphic Player::getGraphic() const
 {
+	D2_PROBE(player_getGraphic);
 	switch (_pmode) {
 	case PM_STAND:
 		return freeMove.animating ? player_graphic::Walk : player_graphic::Stand;
@@ -1956,6 +1997,7 @@ void Player::getAnimationFramesAndTicksPerFrame(player_graphic graphics, int8_t 
 
 void Player::UpdatePreviewCelSprite(_cmd_id cmdId, Point point, uint16_t wParam1, uint16_t wParam2)
 {
+	D2_PROBE_FN();
 	// if game is not running don't show a preview
 	if (!gbRunGame || PauseMode != 0 || !gbProcessPlayers)
 		return;
@@ -2108,6 +2150,7 @@ int32_t Player::calculateBaseMana() const
 
 Player *PlayerAtPosition(Point position)
 {
+	D2_PROBE_FN();
 	if (!InDungeonBounds(position))
 		return nullptr;
 
@@ -2224,6 +2267,10 @@ void ResetPlayerGFX(Player &player)
 
 void NewPlrAnim(Player &player, player_graphic graphic, Direction dir, AnimationDistributionFlags flags /*= AnimationDistributionFlags::None*/, int8_t numSkippedFrames /*= 0*/, int8_t distributeFramesBeforeFrame /*= 0*/)
 {
+	D2_PROBE_FN();
+	// Diablo 2 mod: anything but the walk cycle (attacking, getting hit, blocking, dying, standing) ends free movement
+	if (graphic != player_graphic::Walk)
+		d2::FreeMoveInterrupt(player);
 	LoadPlrGFX(player, graphic);
 
 	OptionalClxSpriteList sprites;
@@ -2313,6 +2360,7 @@ void SetPlrAnims(Player &player)
  */
 void CreatePlayer(Player &player, HeroClass c)
 {
+	D2_PROBE(player_CreatePlayer);
 	player = {};
 	SetRndSeed(SDL_GetTicks());
 
@@ -2407,7 +2455,7 @@ void CreatePlayer(Player &player, HeroClass c)
 	player.pTownWarps = 0;
 	player.pLvlLoad = 0;
 	player.pManaShield = false;
-	player.isRunning = d2::RunByDefault;
+	player.isRunning = d2::MovementEnabled() && d2::RunByDefault;
 	player.pDamAcFlags = ItemSpecialEffectHf::None;
 	player.wReflections = 0;
 
@@ -2534,6 +2582,7 @@ void AddPlrMonstExper(int lvl, int exp, char pmask)
 
 void InitPlayer(Player &player, bool firstTime)
 {
+	D2_PROBE(player_InitPlayer);
 	if (firstTime) {
 		player._pRSplType = SpellType::Invalid;
 		player._pRSpell = SpellID::Invalid;
@@ -2544,7 +2593,7 @@ void InitPlayer(Player &player, bool firstTime)
 		player.queuedSpell.spellType = player._pRSplType;
 		player.pManaShield = false;
 		player.wReflections = 0;
-		player.isRunning = d2::RunByDefault;
+		player.isRunning = d2::MovementEnabled() && d2::RunByDefault;
 	}
 
 	if (player.isOnActiveLevel()) {
@@ -2597,6 +2646,7 @@ void InitPlayer(Player &player, bool firstTime)
 
 void InitMultiView()
 {
+	D2_PROBE_FN();
 	assert(MyPlayer != nullptr);
 	ViewPosition = MyPlayer->position.tile;
 }
@@ -2628,11 +2678,13 @@ void PlrDoTrans(Point position)
 
 void SetPlayerOld(Player &player)
 {
+	D2_PROBE_FN();
 	player.position.old = player.position.tile;
 }
 
 void FixPlayerLocation(Player &player, Direction bDir)
 {
+	D2_PROBE(player_FixPlayerLocation);
 	player.position.future = player.position.tile;
 	player._pdir = bDir;
 	if (&player == MyPlayer) {
@@ -2644,6 +2696,7 @@ void FixPlayerLocation(Player &player, Direction bDir)
 
 void StartStand(Player &player, Direction dir)
 {
+	D2_PROBE(player_StartStand);
 	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
@@ -2659,6 +2712,7 @@ void StartStand(Player &player, Direction dir)
 
 void StartPlrBlock(Player &player, Direction dir)
 {
+	D2_PROBE_FN();
 	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
@@ -2683,6 +2737,7 @@ void StartPlrBlock(Player &player, Direction dir)
  */
 void FixPlrWalkTags(const Player &player)
 {
+	D2_PROBE_FN();
 	for (int y = 0; y < MAXDUNY; y++) {
 		for (int x = 0; x < MAXDUNX; x++) {
 			if (PlayerAtPosition({ x, y }) == &player)
@@ -2693,6 +2748,7 @@ void FixPlrWalkTags(const Player &player)
 
 void StartPlrHit(Player &player, int dam, bool forcehit)
 {
+	D2_PROBE(player_StartPlrHit);
 	if (player._pInvincible && player._pHitPoints == 0 && &player == MyPlayer) {
 		SyncPlrKill(player, DeathReason::Unknown);
 		return;
@@ -2701,8 +2757,16 @@ void StartPlrHit(Player &player, int dam, bool forcehit)
 	player.Say(HeroSpeech::ArghClang);
 
 	RedrawComponent(PanelDrawComponent::Health);
-	// Diablo 2 hit recovery: only flinch when a single hit takes a real chunk of max life
-	if (!forcehit && !d2::PlayerFlinches(player, dam)) {
+	if (d2::CombatEnabled()) {
+		// Diablo 2 hit recovery: only flinch when a single hit takes a real chunk of max life
+		if (!forcehit && !d2::PlayerFlinches(player, dam)) {
+			return;
+		}
+	} else if (player._pClass == HeroClass::Barbarian) {
+		if (dam >> 6 < player._pLevel + player._pLevel / 4 && !forcehit) {
+			return;
+		}
+	} else if (dam >> 6 < player._pLevel && !forcehit) {
 		return;
 	}
 
@@ -3028,6 +3092,7 @@ void StartWarpLvl(Player &player, size_t pidx)
 
 void ProcessPlayers()
 {
+	D2_PROBE(player_ProcessPlayers);
 	assert(MyPlayer != nullptr);
 	Player &myPlayer = *MyPlayer;
 
@@ -3120,13 +3185,13 @@ void ProcessPlayers()
 			player.previewCelSprite = std::nullopt;
 			if (player._pmode != PM_DEATH || player.AnimInfo.tickCounterOfCurrentFrame != 40)
 				player.AnimInfo.processAnimation();
-
 		}
 	}
 }
 
 void ClrPlrPath(Player &player)
 {
+	D2_PROBE(player_ClrPlrPath);
 	memset(player.walkpath, WALK_NONE, sizeof(player.walkpath));
 	// Diablo 2 mod: a new order replaces any movement in progress (the hero stops where they are)
 	player.freeMove.active = false;
@@ -3143,6 +3208,7 @@ void ClrPlrPath(Player &player)
  */
 bool PosOkPlayer(const Player &player, Point position)
 {
+	D2_PROBE(player_PosOkPlayer);
 	if (!InDungeonBounds(position))
 		return false;
 	if (!IsTileWalkable(position))
@@ -3171,8 +3237,27 @@ bool PosOkPlayer(const Player &player, Point position)
 
 void MakePlrPath(Player &player, Point targetPosition, bool endspace)
 {
-	// Diablo 2 mod: heroes move freely towards the target instead of stepping tile by tile
-	d2::FreeMoveSetTarget(player, targetPosition, 0, 0, endspace);
+	D2_PROBE(player_MakePlrPath);
+	if (d2::MovementEnabled()) {
+		// Diablo 2 mod: heroes move freely towards the target instead of stepping tile by tile
+		d2::FreeMoveSetTarget(player, targetPosition, 0, 0, endspace);
+		return;
+	}
+
+	if (player.position.future == targetPosition) {
+		return;
+	}
+
+	int path = FindPath([&player](Point position) { return PosOkPlayer(player, position); }, player.position.future, targetPosition, player.walkpath);
+	if (path == 0) {
+		return;
+	}
+
+	if (!endspace) {
+		path--;
+	}
+
+	player.walkpath[path] = WALK_NONE;
 }
 
 void CalcPlrStaff(Player &player)
@@ -3187,6 +3272,7 @@ void CalcPlrStaff(Player &player)
 
 void CheckPlrSpell(bool isShiftHeld, SpellID spellID, SpellType spellType)
 {
+	D2_PROBE_FN();
 	bool addflag = false;
 
 	assert(MyPlayer != nullptr);
@@ -3284,6 +3370,7 @@ void SyncPlrAnim(Player &player)
 
 void SyncInitPlrPos(Player &player)
 {
+	D2_PROBE_FN();
 	if (!player.isOnActiveLevel())
 		return;
 

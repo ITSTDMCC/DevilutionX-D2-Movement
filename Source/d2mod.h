@@ -21,12 +21,56 @@ struct Monster;
 
 namespace d2 {
 
+/** @brief Is Diablo 2 movement on? (Gameplay option, fixed for the length of a game.) Off means stock Diablo 1. */
+bool MovementEnabled();
+
+/** @brief Are the Diablo 2 to-hit and hit recovery rules on? Off means stock Diablo 1 combat. */
+bool CombatEnabled();
+
 /** Sub-tile units per tile for free movement positions. */
 constexpr int32_t SubTile = 256;
-/** Walking speed in sub-tile units per game tick (one tile in 8 ticks, the same as Diablo 1 walking). */
-constexpr int32_t WalkSpeed = 32;
-/** Running speed in sub-tile units per game tick. */
-constexpr int32_t RunSpeed = 48;
+
+/** Diablo 2 charstats.txt WalkVelocity and RunVelocity (the same for every class). */
+constexpr int32_t D2WalkVelocity = 6;
+constexpr int32_t D2RunVelocity = 9;
+/** Diablo 2 path speed: PATH_SetVelocity(velocity << 8), each frame moves (base 1024 * velocity) >> 6 units of 1/65536 subtile. */
+constexpr int32_t D2UnitsPerFrame(int32_t velocity)
+{
+	return (1024 * (velocity << 8)) >> 6;
+}
+constexpr int32_t D2FramesPerSecond = 25;
+constexpr int32_t D1TicksPerSecond = 20;
+/**
+ * Both games draw a 640x480 view; a Diablo 2 subtile is 32x16 pixels and a Diablo 1 tile 64x32,
+ * so one Diablo 1 tile is two Diablo 2 subtiles on screen. Converts a D2 velocity to sub-tile units per D1 tick.
+ */
+constexpr int32_t D2SpeedPerTick(int32_t velocity)
+{
+	return static_cast<int32_t>(static_cast<int64_t>(D2UnitsPerFrame(velocity)) * D2FramesPerSecond * (SubTile / 2) / (65536LL * D1TicksPerSecond));
+}
+/** Walking speed in sub-tile units per game tick (Diablo 2: 4.6875 tiles a second). */
+constexpr int32_t WalkSpeed = D2SpeedPerTick(D2WalkVelocity);
+/** Running speed in sub-tile units per game tick (Diablo 2: 7.03 tiles a second). */
+constexpr int32_t RunSpeed = D2SpeedPerTick(D2RunVelocity);
+static_assert(WalkSpeed == 60 && RunSpeed == 90, "Diablo 2 speeds do not convert exactly");
+/** Speed the Diablo 1 walk cycle is drawn for (one tile per 8 frame stride): faster movement plays it faster. */
+constexpr int32_t D1WalkCycleSpeed = SubTile / 8;
+
+/** Diablo 2 direction: unit vector scaled to 4096 and one of 64 directions (0 is +x+y, counting towards +y). */
+struct D2Heading {
+	int32_t x;
+	int32_t y;
+	int dir64;
+};
+
+/** @brief Port of D2Common PATH_GetDirectionVector: heading from a world delta using Diablo 2's 128 entry tangent table. */
+D2Heading D2DirectionVector(int64_t dx, int64_t dy);
+
+/** @brief Entry @p tangent (0..127) of the Diablo 2 tangent table, for checking against D2Common.dll. */
+D2Heading D2TangentTableEntry(int tangent);
+
+/** @brief Diablo 1 sprite direction for a Diablo 2 64 step direction (players have 8 directions in both games). */
+Direction FacingFromDir64(int dir64);
 constexpr int MaxMoveWaypoints = MaxPathLength + 1;
 
 /**
@@ -42,8 +86,13 @@ struct FreeMoveState {
 	bool active = false;
 	/** The walk animation is playing because of free movement. */
 	bool animating = false;
-	/** Alternating flag used to speed the walk animation up while running. */
-	bool extraFrame = false;
+	/** Walk cycle progress carried between ticks, in sub-tile units (see D1WalkCycleSpeed). */
+	int32_t animCarry = 0;
+	/** Fraction of a sub-tile unit not yet moved, in 1/4096ths (Diablo 2 keeps 1/65536 subtile precision). */
+	int32_t carryX = 0;
+	int32_t carryY = 0;
+	/** Last walk frame a footstep was checked on. */
+	int8_t lastStepFrame = -1;
 	int32_t x = 0;
 	int32_t y = 0;
 	uint8_t waypointCount = 0;
@@ -135,6 +184,9 @@ bool FreeMoveActive(const Player &player);
 
 /** @brief Stop moving where the hero is (does not snap back to the tile centre). */
 void FreeMoveStop(Player &player);
+
+/** @brief The hero started another action (attack, hit recovery, block, death): stop moving, keep the position. */
+void FreeMoveInterrupt(Player &player);
 
 /** @brief Forget the sub-tile position, e.g. on level change or teleport. */
 void FreeMoveReset(Player &player);

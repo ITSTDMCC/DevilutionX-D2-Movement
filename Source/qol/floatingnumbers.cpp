@@ -1,4 +1,5 @@
 #include "floatingnumbers.h"
+#include "d2probe.h"
 
 #include <cstdint>
 #include <ctime>
@@ -129,6 +130,7 @@ void AddFloatingNumber(Point pos, Displacement offset, DamageType type, int valu
 
 void AddFloatingNumber(DamageType damageType, const Monster &monster, int damage)
 {
+	D2_PROBE_FN();
 	if (*sgOptions.Gameplay.enableFloatingNumbers == FloatingNumbers::Off)
 		return;
 
@@ -152,6 +154,7 @@ void AddFloatingNumber(DamageType damageType, const Monster &monster, int damage
 
 void AddFloatingNumber(DamageType damageType, const Player &player, int damage)
 {
+	D2_PROBE_FN();
 	if (*sgOptions.Gameplay.enableFloatingNumbers == FloatingNumbers::Off)
 		return;
 

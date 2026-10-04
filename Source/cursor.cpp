@@ -10,6 +10,7 @@
 #include <fmt/format.h>
 
 #include "d2mod.h"
+#include "d2probe.h"
 #include "DiabloUI/diabloui.h"
 #include "control.h"
 #include "controls/plrctrls.h"
@@ -307,6 +308,7 @@ void DrawSoftwareCursor(const Surface &out, Point position, int cursId)
 
 void InitLevelCursor()
 {
+	D2_PROBE_FN();
 	NewCursor(CURSOR_HAND);
 	cursPosition = ViewPosition;
 	pcurstemp = -1;
@@ -348,6 +350,7 @@ void CheckRportal()
 
 void CheckCursMove()
 {
+	D2_PROBE(cursor_CheckCursMove);
 	if (IsItemLabelHighlighted())
 		return;
 

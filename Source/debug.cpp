@@ -7,6 +7,7 @@
 #ifdef _DEBUG
 
 #include <cstdint>
+#include "d2probe.h"
 #include <cstdio>
 
 #include "debug.h"
@@ -235,6 +236,7 @@ std::string DebugCmdLoadQuestMap(const string_view parameter)
 
 std::string DebugCmdLoadMap(const string_view parameter)
 {
+	D2_PROBE_FN();
 	TestMapPath.clear();
 	int mapType = 0;
 	Point spawn = {};
@@ -352,6 +354,7 @@ std::unordered_map<string_view, _talker_id> TownerShortNameToTownerId = {
 
 std::string DebugCmdVisitTowner(const string_view parameter)
 {
+	D2_PROBE_FN();
 	Player &myPlayer = *MyPlayer;
 
 	if (setlevel || !myPlayer.isOnLevel(0))
@@ -653,6 +656,7 @@ std::string DebugCmdShowGrid(const string_view parameter)
 
 std::string DebugCmdSpawnUniqueMonster(const string_view parameter)
 {
+	D2_PROBE_FN();
 	if (leveltype == DTYPE_TOWN)
 		return "Do you want to kill the towners?!?";
 
@@ -740,6 +744,7 @@ std::string DebugCmdSpawnUniqueMonster(const string_view parameter)
 
 std::string DebugCmdSpawnMonster(const string_view parameter)
 {
+	D2_PROBE_FN();
 	if (leveltype == DTYPE_TOWN)
 		return "Do you want to kill the towners?!?";
 
@@ -952,6 +957,7 @@ std::string DebugCmdQuestInfo(const string_view parameter)
 
 std::string DebugCmdPlayerInfo(const string_view parameter)
 {
+	D2_PROBE_FN();
 	int playerId = atoi(parameter.data());
 	if (static_cast<size_t>(playerId) >= Players.size())
 		return "My friend, we need a valid playerId.";
@@ -1180,6 +1186,7 @@ bool IsDebugGridInMegatiles()
 
 bool GetDebugGridText(Point dungeonCoords, char *debugGridTextBuffer)
 {
+	D2_PROBE_FN();
 	int info = 0;
 	int blankValue = 0;
 	Point megaCoords = dungeonCoords.worldToMega();

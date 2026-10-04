@@ -6,6 +6,7 @@
 
 #include "inv_iterators.hpp"
 #include "options.h"
+#include "d2probe.h"
 #include "player.h"
 #include <algorithm>
 
@@ -89,6 +90,7 @@ bool DoPickup(Item item)
 
 void AutoPickup(const Player &player)
 {
+	D2_PROBE(autopickup_AutoPickup);
 	if (&player != MyPlayer)
 		return;
 	if (leveltype == DTYPE_TOWN && !*sgOptions.Gameplay.autoPickupInTown)

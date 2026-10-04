@@ -4,6 +4,7 @@
  * Implementation of player inventory.
  */
 #include <cstdint>
+#include "d2probe.h"
 #include <utility>
 
 #include <fmt/format.h>
@@ -228,6 +229,7 @@ bool CanWield(Player &player, const Item &item)
  */
 bool CanEquip(Player &player, const Item &item, inv_body_loc bodyLocation)
 {
+	D2_PROBE_FN();
 	if (!CanEquip(item) || player._pmode > PM_WALK_SIDEWAYS || !player.InvBody[bodyLocation].isEmpty()) {
 		return false;
 	}
@@ -326,6 +328,7 @@ int FindTargetSlotUnderItemCursor(Point cursorPosition, Size itemSize)
 
 void CheckInvPaste(Player &player, Point cursorPosition)
 {
+	D2_PROBE_FN();
 	Size itemSize = GetInventorySize(player.HoldItem);
 
 	int slot = FindTargetSlotUnderItemCursor(cursorPosition, itemSize);
@@ -561,6 +564,7 @@ void CheckInvPaste(Player &player, Point cursorPosition)
 
 void CheckInvCut(Player &player, Point cursorPosition, bool automaticMove, bool dropItem)
 {
+	D2_PROBE_FN();
 	if (player._pmode > PM_WALK_SIDEWAYS) {
 		return;
 	}
@@ -1542,6 +1546,7 @@ void CheckInvScrn(bool isShiftHeld, bool isCtrlHeld)
 
 void InvGetItem(Player &player, int ii)
 {
+	D2_PROBE_FN();
 	auto &item = Items[ii];
 	if (dropGoldFlag) {
 		CloseGoldDrop();
@@ -1955,6 +1960,7 @@ Item &GetInventoryItem(Player &player, int location)
 
 bool UseInvItem(int cii)
 {
+	D2_PROBE_FN();
 	if (IsInspectingPlayer())
 		return false;
 
@@ -2103,6 +2109,7 @@ void CloseInventory()
 
 void CloseStash()
 {
+	D2_PROBE_FN();
 	if (!IsStashOpen)
 		return;
 

@@ -4,6 +4,7 @@
  * Implementation of functionality for casting player spells.
  */
 #include "spells.h"
+#include "d2probe.h"
 
 #include "control.h"
 #include "cursor.h"
@@ -235,6 +236,7 @@ void CastSpell(int id, SpellID spl, int sx, int sy, int dx, int dy, int spllvl)
 
 void DoResurrect(size_t pnum, Player &target)
 {
+	D2_PROBE_FN();
 	if (pnum >= Players.size()) {
 		return;
 	}

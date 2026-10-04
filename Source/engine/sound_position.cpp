@@ -1,4 +1,5 @@
 #include "engine/sound_position.hpp"
+#include "d2probe.h"
 
 #include "engine/sound_defs.hpp"
 #include "player.h"
@@ -7,6 +8,7 @@ namespace devilution {
 
 bool CalculateSoundPosition(Point soundPosition, int *plVolume, int *plPan)
 {
+	D2_PROBE_FN();
 	const Point playerPosition { MyPlayer->position.tile };
 	const Displacement delta = soundPosition - playerPosition;
 

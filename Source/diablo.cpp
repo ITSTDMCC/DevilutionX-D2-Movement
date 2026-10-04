@@ -15,6 +15,7 @@
 #include "capture.h"
 #include "cursor.h"
 #include "d2mod.h"
+#include "d2probe.h"
 #include "dead.h"
 #ifdef _DEBUG
 #include "debug.h"
@@ -223,6 +224,7 @@ bool ProcessInput()
 
 void LeftMouseCmd(bool bShift)
 {
+	D2_PROBE(diablo_LeftMouseCmd);
 	bool bNear;
 
 	assert(!GetMainPanel().contains(MousePosition));
@@ -236,7 +238,10 @@ void LeftMouseCmd(bool bShift)
 			NetSendCmdLocParam1(true, CMD_TALKXY, cursPosition, pcursmonst);
 		if (pcursitem == -1 && pcursmonst == -1 && pcursplr == -1) {
 			LastMouseButtonAction = MouseActionType::Walk;
-			d2::SendWalkToCursor(true);
+			if (d2::MovementEnabled())
+				d2::SendWalkToCursor(true);
+			else
+				NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, cursPosition);
 		}
 		return;
 	}
@@ -286,7 +291,10 @@ void LeftMouseCmd(bool bShift)
 	}
 	if (!bShift && pcursitem == -1 && ObjectUnderCursor == nullptr && pcursmonst == -1 && pcursplr == -1) {
 		LastMouseButtonAction = MouseActionType::Walk;
-		d2::SendWalkToCursor(true);
+		if (d2::MovementEnabled())
+			d2::SendWalkToCursor(true);
+		else
+			NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, cursPosition);
 	}
 }
 
@@ -309,6 +317,7 @@ bool TryOpenDungeonWithMouse()
 
 void LeftMouseDown(uint16_t modState)
 {
+	D2_PROBE_FN();
 	LastMouseButtonAction = MouseActionType::None;
 
 	if (gmenu_left_mouse(true))
@@ -1377,10 +1386,12 @@ void UpdateMonsterLights()
 
 void GameLogic()
 {
+	D2_PROBE(diablo_GameLogic);
 	if (!ProcessInput()) {
 		return;
 	}
 	d2::UpdateLocalRunState();
+	d2probe::CheckTick();
 	if (gbProcessPlayers) {
 		gGameLogicStep = GameLogicStep::ProcessPlayers;
 		ProcessPlayers();
@@ -1589,6 +1600,7 @@ bool CanPlayerTakeAction()
 
 void InitKeymapActions()
 {
+	D2_PROBE_FN();
 	for (int i = 0; i < 8; ++i) {
 		sgOptions.Keymapper.AddAction(
 		    "BeltItem{}",
@@ -2450,6 +2462,7 @@ int DiabloMain(int argc, char **argv)
 
 bool TryIconCurs()
 {
+	D2_PROBE_FN();
 	if (pcurs == CURSOR_RESURRECT) {
 		if (pcursplr != -1) {
 			NetSendCmdParam1(true, CMD_RESURRECT, pcursplr);
@@ -2703,6 +2716,7 @@ void DisableInputEventHandler(const SDL_Event &event, uint16_t modState)
 
 void LoadGameLevel(bool firstflag, lvl_entry lvldir)
 {
+	D2_PROBE(diablo_LoadGameLevel);
 	_music_id neededTrack = GetLevelMusic(leveltype);
 	ClearFloatingNumbers();
 
@@ -2979,6 +2993,7 @@ void LoadGameLevel(bool firstflag, lvl_entry lvldir)
 		music_mute();
 	}
 
+	d2probe::OnLevelLoaded();
 	CompleteProgress();
 
 	// Recalculate mouse selection of entities after level change/load

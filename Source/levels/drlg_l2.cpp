@@ -4,6 +4,7 @@
  * Implementation of the catacombs level generation algorithms.
  */
 #include "levels/drlg_l2.h"
+#include "d2probe.h"
 
 #include <cstdint>
 #include <list>
@@ -2630,6 +2631,7 @@ void FixDoors()
 
 bool PlaceStairs(lvl_entry entry)
 {
+	D2_PROBE_FN();
 	std::optional<Point> position;
 
 	// Place stairs up

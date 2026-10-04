@@ -1,4 +1,5 @@
 #include "levels/drlg_l1.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -1101,6 +1102,7 @@ void FixCornerTiles()
 
 bool PlaceCathedralStairs(lvl_entry entry)
 {
+	D2_PROBE_FN();
 	bool success = true;
 	std::optional<Point> position;
 

@@ -12,6 +12,7 @@
 #include "controls/plrctrls.h"
 #include "cursor.h"
 #include "d2mod.h"
+#include "d2probe.h"
 #include "dead.h"
 #ifdef _DEBUG
 #include "debug.h"
@@ -204,6 +205,7 @@ int ProjectileTrapDamage(Missile &missile)
 
 bool MonsterMHit(int pnum, int monsterId, int mindam, int maxdam, int dist, MissileID t, DamageType damageType, bool shift)
 {
+	D2_PROBE(missiles_MonsterMHit);
 	auto &monster = Monsters[monsterId];
 
 	if (!monster.isPossibleToHit() || monster.isImmune(t, damageType))
@@ -214,7 +216,13 @@ bool MonsterMHit(int pnum, int monsterId, int mindam, int maxdam, int dist, Miss
 	const Player &player = Players[pnum];
 	const MissileData &missileData = GetMissileData(t);
 	if (missileData.isArrow()) {
-		hper = d2::PlayerRangedChanceToHit(player, monster);
+		if (d2::CombatEnabled()) {
+			hper = d2::PlayerRangedChanceToHit(player, monster);
+		} else {
+			hper = player.GetRangedPiercingToHit();
+			hper -= player.CalculateArmorPierce(monster.armorClass, false);
+			hper -= (dist * dist) / 2;
+		}
 	} else {
 		hper = player.GetMagicToHit() - (monster.level(sgGameInitInfo.nDifficulty) * 2) - dist;
 	}
@@ -281,6 +289,7 @@ bool MonsterMHit(int pnum, int monsterId, int mindam, int maxdam, int dist, Miss
 
 bool Plr2PlrMHit(const Player &player, int p, int mindam, int maxdam, int dist, MissileID mtype, DamageType damageType, bool shift, bool *blocked)
 {
+	D2_PROBE(missiles_Plr2PlrMHit);
 	Player &target = Players[p];
 
 	if (sgGameInitInfo.bFriendlyFire == 0 && player.friendlyMode)
@@ -326,7 +335,13 @@ bool Plr2PlrMHit(const Player &player, int p, int mindam, int maxdam, int dist, 
 
 	int hit;
 	if (missileData.isArrow()) {
-		hit = d2::PlayerVsPlayerChanceToHit(player, target, true);
+		if (d2::CombatEnabled()) {
+			hit = d2::PlayerVsPlayerChanceToHit(player, target, true);
+		} else {
+			hit = player.GetRangedToHit()
+			    - (dist * dist / 2)
+			    - target.GetArmor();
+		}
 	} else {
 		hit = player.GetMagicToHit()
 		    - (target._pLevel * 2)
@@ -401,6 +416,7 @@ void RotateBlockedMissile(Missile &missile)
 
 void CheckMissileCol(Missile &missile, DamageType damageType, int minDamage, int maxDamage, bool isDamageShifted, Point position, bool dontDeleteOnCollision)
 {
+	D2_PROBE_FN();
 	if (!InDungeonBounds(position))
 		return;
 
@@ -559,6 +575,7 @@ bool MoveMissile(Missile &missile, tl::function_ref<bool(Point)> checkTile, bool
 
 void MoveMissileAndCheckMissileCol(Missile &missile, DamageType damageType, int mindam, int maxdam, bool ignoreStart, bool ifCollidesDontMoveToHitTile)
 {
+	D2_PROBE_FN();
 	auto checkTile = [&](Point tile) {
 		if (ignoreStart && missile.position.start == tile)
 			return true;
@@ -977,6 +994,7 @@ bool MonsterTrapHit(int monsterId, int mindam, int maxdam, int dist, MissileID t
 
 bool PlayerMHit(int pnum, Monster *monster, int dist, int mind, int maxd, MissileID mtype, DamageType damageType, bool shift, DeathReason deathReason, bool *blocked)
 {
+	D2_PROBE(missiles_PlayerMHit);
 	*blocked = false;
 
 	Player &player = Players[pnum];
@@ -1004,7 +1022,14 @@ bool PlayerMHit(int pnum, Monster *monster, int dist, int mind, int maxd, Missil
 	if (missileData.isArrow()) {
 		int tac = player.GetArmor();
 		if (monster != nullptr) {
-			hper = d2::MonsterChanceToHit(*monster, player, monster->toHit, tac);
+			if (d2::CombatEnabled()) {
+				hper = d2::MonsterChanceToHit(*monster, player, monster->toHit, tac);
+			} else {
+				hper = monster->toHit
+				    + ((monster->level(sgGameInitInfo.nDifficulty) - player._pLevel) * 2)
+				    + 30
+				    - (dist * 2) - tac;
+			}
 		} else {
 			hper = 100 - (tac / 2) - (dist * 2);
 		}
@@ -1020,7 +1045,7 @@ bool PlayerMHit(int pnum, Monster *monster, int dist, int mind, int maxd, Missil
 	if (currlevel == 16)
 		minhit = 30;
 	hper = std::max(hper, minhit);
-	if (monster != nullptr && missileData.isArrow())
+	if (d2::CombatEnabled() && monster != nullptr && missileData.isArrow())
 		hper = std::min(hper, d2::MaxChanceToHit);
 
 	int blk = 100;
@@ -1310,6 +1335,7 @@ void AddJester(Missile &missile, AddMissileParameter &parameter)
 
 void AddStealPotions(Missile &missile, AddMissileParameter & /*parameter*/)
 {
+	D2_PROBE_FN();
 	Crawl(0, 2, [&](Displacement displacement) {
 		Point target = missile.position.start + displacement;
 		if (!InDungeonBounds(target))
@@ -1377,6 +1403,7 @@ void AddStealPotions(Missile &missile, AddMissileParameter & /*parameter*/)
 
 void AddStealMana(Missile &missile, AddMissileParameter & /*parameter*/)
 {
+	D2_PROBE_FN();
 	std::optional<Point> trappedPlayerPosition = FindClosestValidPosition(
 	    [](Point target) {
 		    return InDungeonBounds(target) && dPlayer[target.x][target.y] != 0;
@@ -1426,6 +1453,7 @@ void AddSpectralArrow(Missile &missile, AddMissileParameter &parameter)
 
 void AddWarp(Missile &missile, AddMissileParameter &parameter)
 {
+	D2_PROBE_FN();
 	int minDistanceSq = std::numeric_limits<int>::max();
 
 	int id = missile._misource;
@@ -1501,6 +1529,7 @@ void AddWarp(Missile &missile, AddMissileParameter &parameter)
 
 void AddLightningWall(Missile &missile, AddMissileParameter &parameter)
 {
+	D2_PROBE_FN();
 	UpdateMissileVelocity(missile, parameter.dst, 16);
 	missile._miAnimFrame = GenerateRnd(8) + 1;
 	missile._mirange = 255 * (missile._mispllvl + 1);
@@ -1555,6 +1584,7 @@ void AddImmolation(Missile &missile, AddMissileParameter &parameter)
 
 void AddLightningBow(Missile &missile, AddMissileParameter &parameter)
 {
+	D2_PROBE_FN();
 	Point dst = parameter.dst;
 	if (missile.position.start == parameter.dst) {
 		dst += parameter.midir;
@@ -1729,6 +1759,7 @@ void AddArrow(Missile &missile, AddMissileParameter &parameter)
 
 void UpdateVileMissPos(Missile &missile, Point dst)
 {
+	D2_PROBE_FN();
 	for (int k = 1; k < 50; k++) {
 		for (int j = -k; j <= k; j++) {
 			int yy = j + dst.y;
@@ -1745,6 +1776,7 @@ void UpdateVileMissPos(Missile &missile, Point dst)
 
 void AddPhasing(Missile &missile, AddMissileParameter &parameter)
 {
+	D2_PROBE_FN();
 	missile._mirange = 2;
 
 	Player &player = Players[missile._misource];
@@ -1847,6 +1879,7 @@ void AddMagmaBall(Missile &missile, AddMissileParameter &parameter)
 
 void AddTeleport(Missile &missile, AddMissileParameter &parameter)
 {
+	D2_PROBE_FN();
 	Player &player = Players[missile._misource];
 
 	std::optional<Point> teleportDestination = FindClosestValidPosition(
@@ -1867,6 +1900,7 @@ void AddTeleport(Missile &missile, AddMissileParameter &parameter)
 
 void AddNovaBall(Missile &missile, AddMissileParameter &parameter)
 {
+	D2_PROBE_FN();
 	UpdateMissileVelocity(missile, parameter.dst, 16);
 	missile._miAnimFrame = GenerateRnd(8) + 1;
 	missile._mirange = 255;
@@ -1983,6 +2017,7 @@ void AddWeaponExplosion(Missile &missile, AddMissileParameter &parameter)
 
 void AddTownPortal(Missile &missile, AddMissileParameter &parameter)
 {
+	D2_PROBE_FN();
 	if (leveltype == DTYPE_TOWN) {
 		missile.position.tile = parameter.dst;
 		missile.position.start = parameter.dst;
@@ -2700,6 +2735,7 @@ void AddRedPortal(Missile &missile, AddMissileParameter & /*parameter*/)
 
 void AddDiabloApocalypse(Missile &missile, AddMissileParameter & /*parameter*/)
 {
+	D2_PROBE_FN();
 	for (const Player &player : Players) {
 		if (!player.plractive)
 			continue;
@@ -3097,6 +3133,7 @@ void ProcessHorkSpawn(Missile &missile)
 
 void ProcessRune(Missile &missile)
 {
+	D2_PROBE_FN();
 	Point position = missile.position.tile;
 	int mid = dMonster[position.x][position.y];
 	int pid = dPlayer[position.x][position.y];
@@ -3173,6 +3210,7 @@ void ProcessRingOfFire(Missile &missile)
 
 void ProcessSearch(Missile &missile)
 {
+	D2_PROBE_FN();
 	missile._mirange--;
 	if (missile._mirange != 0)
 		return;
@@ -3332,6 +3370,7 @@ void ProcessLightning(Missile &missile)
 
 void ProcessTownPortal(Missile &missile)
 {
+	D2_PROBE_FN();
 	int expLight[17] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15, 15 };
 
 	if (missile._mirange > 1)
@@ -3621,6 +3660,7 @@ void ProcessAcidSplate(Missile &missile)
 
 void ProcessTeleport(Missile &missile)
 {
+	D2_PROBE_FN();
 	missile._mirange--;
 	if (missile._mirange <= 0) {
 		missile._miDelFlag = true;

@@ -5,6 +5,7 @@
  */
 
 #include <cstdint>
+#include "d2probe.h"
 
 #include <SDL.h>
 
@@ -285,6 +286,7 @@ void CompleteProgress()
 
 void ShowProgress(interface_mode uMsg)
 {
+	D2_PROBE_FN();
 	IsProgress = true;
 
 	gbSomebodyWonGameKludge = false;

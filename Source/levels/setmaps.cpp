@@ -1,4 +1,5 @@
 #include "levels/setmaps.h"
+#include "d2probe.h"
 
 #include <cstdint>
 
@@ -107,6 +108,7 @@ void LoadArenaMap(const char *path, Point viewPosition, Point exitTrigger)
 
 void LoadSetMap()
 {
+	D2_PROBE_FN();
 	switch (setlvlnum) {
 	case SL_SKELKING:
 		if (Quests[Q_SKELKING]._qactive == QUEST_INIT) {

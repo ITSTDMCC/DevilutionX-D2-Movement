@@ -17,6 +17,7 @@
 #include "control.h"
 #include "cursor.h"
 #include "d2mod.h"
+#include "d2probe.h"
 #include "dead.h"
 #include "engine/load_cl2.hpp"
 #include "engine/load_file.hpp"
@@ -208,6 +209,7 @@ void InitMonster(Monster &monster, Direction rd, size_t typeIndex, Point positio
 
 bool CanPlaceMonster(Point position)
 {
+	D2_PROBE_FN();
 	return InDungeonBounds(position)
 	    && dMonster[position.x][position.y] == 0
 	    && dPlayer[position.x][position.y] == 0
@@ -433,6 +435,7 @@ void ClearMVars(Monster &monster)
 
 void ClrAllMonsters()
 {
+	D2_PROBE_FN();
 	for (auto &monster : Monsters) {
 		ClearMVars(monster);
 		monster.goal = MonsterGoal::None;
@@ -611,6 +614,7 @@ bool IsRanged(Monster &monster)
 
 void UpdateEnemy(Monster &monster)
 {
+	D2_PROBE(monster_UpdateEnemy);
 	WorldTilePosition target;
 	int menemy = -1;
 	int bestDist = -1;
@@ -825,6 +829,7 @@ void StartEating(Monster &monster)
 
 void DiabloDeath(Monster &diablo, bool sendmsg)
 {
+	D2_PROBE_FN();
 	PlaySFX(USFX_DIABLOD);
 	auto &quest = Quests[Q_DIABLO];
 	quest._qactive = QUEST_DONE;
@@ -1014,6 +1019,7 @@ void StartHeal(Monster &monster)
 
 void SyncLightPosition(Monster &monster)
 {
+	D2_PROBE_FN();
 	if (monster.lightId == NO_LIGHT)
 		return;
 
@@ -1144,6 +1150,7 @@ int GetMinHit()
 
 void MonsterAttackPlayer(Monster &monster, Player &player, int hit, int minDam, int maxDam)
 {
+	D2_PROBE(monster_MonsterAttackPlayer);
 	if (player._pHitPoints >> 6 <= 0 || player._pInvincible || HasAnyOf(player._pSpellFlags, SpellFlag::Etherealize))
 		return;
 	if (monster.position.tile.WalkingDistance(player.position.tile) >= 2)
@@ -1159,10 +1166,17 @@ void MonsterAttackPlayer(Monster &monster, Player &player, int hit, int minDam, 
 		ac += 40;
 	if (HasAnyOf(player.pDamAcFlags, ItemSpecialEffectHf::ACAgainstUndead) && monster.data().monsterClass == MonsterClass::Undead)
 		ac += 20;
-	hit = d2::MonsterChanceToHit(monster, player, hit, ac);
+	if (d2::CombatEnabled()) {
+		hit = d2::MonsterChanceToHit(monster, player, hit, ac);
+	} else {
+		hit += 2 * (monster.level(sgGameInitInfo.nDifficulty) - player._pLevel)
+		    + 30
+		    - ac;
+	}
 	int minhit = GetMinHit();
 	hit = std::max(hit, minhit);
-	hit = std::min(hit, d2::MaxChanceToHit);
+	if (d2::CombatEnabled())
+		hit = std::min(hit, d2::MaxChanceToHit);
 	int blkper = 100;
 	if ((player._pmode == PM_STAND || player._pmode == PM_ATTACK) && player._pBlockFlag) {
 		blkper = GenerateRnd(100);
@@ -1475,6 +1489,7 @@ void ShrinkLeaderPacksize(const Monster &monster)
 
 void MonsterDeath(Monster &monster)
 {
+	D2_PROBE_FN();
 	monster.var1++;
 	if (monster.type().type == MT_DIABLO) {
 		if (monster.position.tile.x < ViewPosition.x) {
@@ -1685,6 +1700,7 @@ bool IsTileSafe(const Monster &monster, Point position)
  */
 bool IsTileAvailable(Point position)
 {
+	D2_PROBE_FN();
 	if (dPlayer[position.x][position.y] != 0 || dMonster[position.x][position.y] != 0)
 		return false;
 
@@ -1699,6 +1715,7 @@ bool IsTileAvailable(Point position)
  */
 bool IsTileAccessible(const Monster &monster, Point position)
 {
+	D2_PROBE_FN();
 	if (dPlayer[position.x][position.y] != 0 || dMonster[position.x][position.y] != 0)
 		return false;
 
@@ -2420,6 +2437,7 @@ void ButcherAi(Monster &monster)
 
 void SneakAi(Monster &monster)
 {
+	D2_PROBE_FN();
 	if (monster.mode != MonsterMode::Stand) {
 		return;
 	}
@@ -2774,6 +2792,7 @@ void MegaAi(Monster &monster)
 
 void LazarusAi(Monster &monster)
 {
+	D2_PROBE_FN();
 	if (monster.mode != MonsterMode::Stand) {
 		return;
 	}
@@ -3655,6 +3674,7 @@ void M_GetKnockback(Monster &monster)
 
 void M_StartHit(Monster &monster, int dam)
 {
+	D2_PROBE(monster_M_StartHit);
 	PlayEffect(monster, MonsterSound::Hit);
 
 	if (IsHardHit(monster, dam)) {
@@ -3665,18 +3685,24 @@ void M_StartHit(Monster &monster, int dam)
 			monster.goalVar1 = 0;
 			monster.goalVar2 = 0;
 		}
+		if (!d2::CombatEnabled() && monster.mode != MonsterMode::Petrified) {
+			StartMonsterGotHit(monster);
+		}
 	}
 
-	// Diablo 2 hit recovery: only flinch when a single hit takes a real chunk of max life.
-	// Stalkers and Illusion Weavers keep their Diablo 1 behaviour, as their AI relies on reacting to every hit.
-	const bool alwaysReacts = IsAnyOf(monster.type().type, MT_SNEAK, MT_STALKER, MT_UNSEEN, MT_ILLWEAV);
-	if (monster.mode != MonsterMode::Petrified && (alwaysReacts || d2::MonsterFlinches(monster, dam))) {
-		StartMonsterGotHit(monster);
+	if (d2::CombatEnabled()) {
+		// Diablo 2 hit recovery: only flinch when a single hit takes a real chunk of max life.
+		// Stalkers and Illusion Weavers keep their Diablo 1 behaviour, as their AI relies on reacting to every hit.
+		const bool alwaysReacts = IsAnyOf(monster.type().type, MT_SNEAK, MT_STALKER, MT_UNSEEN, MT_ILLWEAV);
+		if (monster.mode != MonsterMode::Petrified && (alwaysReacts || d2::MonsterFlinches(monster, dam))) {
+			StartMonsterGotHit(monster);
+		}
 	}
 }
 
 void M_StartHit(Monster &monster, const Player &player, int dam)
 {
+	D2_PROBE_FN();
 	monster.tag(player);
 	if (IsHardHit(monster, dam)) {
 		monster.enemy = player.getId();
@@ -3729,6 +3755,7 @@ void MonsterDeath(Monster &monster, Direction md, bool sendmsg)
 
 void StartMonsterDeath(Monster &monster, const Player &player, bool sendmsg)
 {
+	D2_PROBE_FN();
 	monster.tag(player);
 	Direction md = GetDirection(monster.position.tile, player.position.tile);
 	MonsterDeath(monster, md, sendmsg);
@@ -3878,6 +3905,7 @@ bool Walk(Monster &monster, Direction md)
 
 void GolumAi(Monster &golem)
 {
+	D2_PROBE_FN();
 	if (golem.position.tile.x == 1 && golem.position.tile.y == 0) {
 		return;
 	}
@@ -3964,6 +3992,7 @@ void DeleteMonsterList()
 
 void ProcessMonsters()
 {
+	D2_PROBE_FN();
 	DeleteMonsterList();
 
 	assert(ActiveMonsterCount <= MaxMonsters);
@@ -4357,6 +4386,7 @@ void PlayEffect(Monster &monster, MonsterSound mode)
 
 void MissToMonst(Missile &missile, Point position)
 {
+	D2_PROBE_FN();
 	int monsterId = missile._misource;
 
 	assert(static_cast<size_t>(monsterId) < MaxMonsters);
@@ -4606,6 +4636,7 @@ int encode_enemy(Monster &monster)
 
 void decode_enemy(Monster &monster, int enemyId)
 {
+	D2_PROBE_FN();
 	if (enemyId < MAX_PLRS) {
 		monster.flags &= ~MFLAG_TARGETS_MONSTER;
 		monster.enemy = enemyId;

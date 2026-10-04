@@ -1,4 +1,5 @@
 #include "levels/drlg_l3.h"
+#include "d2probe.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -1931,6 +1932,7 @@ bool Lockout()
 
 bool PlaceCaveStairs(lvl_entry entry)
 {
+	D2_PROBE_FN();
 	std::optional<Point> position;
 
 	// Place stairs up
@@ -1961,6 +1963,7 @@ bool PlaceCaveStairs(lvl_entry entry)
 
 bool PlaceNestStairs(lvl_entry entry)
 {
+	D2_PROBE_FN();
 	std::optional<Point> position;
 
 	// Place stairs up
