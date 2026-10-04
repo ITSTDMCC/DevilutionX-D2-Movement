@@ -9,6 +9,7 @@
 
 #include <fmt/format.h>
 
+#include "d2mod.h"
 #include "DiabloUI/diabloui.h"
 #include "control.h"
 #include "controls/plrctrls.h"
@@ -378,6 +379,11 @@ void CheckCursMove()
 	sy += yo;
 
 	const Player &myPlayer = *MyPlayer;
+
+	// Diablo 2 mod: the camera follows the hero's glide
+	const Displacement glideCorrection = d2::GlideCorrection(myPlayer);
+	sx += glideCorrection.deltaX;
+	sy += glideCorrection.deltaY;
 
 	if (myPlayer.isWalking()) {
 		Displacement offset = GetOffsetForWalking(myPlayer.AnimInfo, myPlayer._pdir, true);

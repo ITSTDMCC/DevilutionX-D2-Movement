@@ -186,12 +186,15 @@ void StartWalk(Player &player, Direction dir, bool pmWillBeCalled)
 		return;
 	}
 
-	// The sprite faces along the straightened path while the step itself may go to either neighbouring direction
-	const Direction facing = d2::WalkFacing(player);
+	// The hero is drawn gliding along the straight segment and faces along it,
+	// while the step itself may go to either neighbouring tile direction
+	const Direction facing = d2::GlideStartStep(player);
 	StartWalkAnimation(player, facing, pmWillBeCalled);
 	HandleWalkMode(player, dir);
 	if (player.isWalking())
 		player.tempDirection = facing;
+	else
+		d2::GlideCancelStep(player);
 }
 
 void ClearStateVariables(Player &player)
@@ -424,6 +427,7 @@ void InitLevelChange(Player &player)
 
 	// Make sure everyone on the level knows whether we are walking or running
 	d2::ShareRunState();
+	d2::GlideReset(player);
 
 	FixPlrWalkTags(player);
 	SetPlayerOld(player);
@@ -1259,9 +1263,11 @@ void CheckNewPath(Player &player, bool pmWillBeCalled)
 
 			for (size_t j = 1; j < MaxPathLength; j++) {
 				player.walkpath[j - 1] = player.walkpath[j];
+				player.walkSegLen[j - 1] = player.walkSegLen[j];
 			}
 
 			player.walkpath[MaxPathLength - 1] = WALK_NONE;
+			player.walkSegLen[MaxPathLength - 1] = 0;
 
 			if (player._pmode == PM_STAND) {
 				StartStand(player, player._pdir);
@@ -3090,6 +3096,8 @@ void ProcessPlayers()
 			player.previewCelSprite = std::nullopt;
 			if (player._pmode != PM_DEATH || player.AnimInfo.tickCounterOfCurrentFrame != 40)
 				player.AnimInfo.processAnimation();
+
+			d2::GlideTick(player);
 		}
 	}
 }
@@ -3097,6 +3105,7 @@ void ProcessPlayers()
 void ClrPlrPath(Player &player)
 {
 	memset(player.walkpath, WALK_NONE, sizeof(player.walkpath));
+	memset(player.walkSegLen, 0, sizeof(player.walkSegLen));
 }
 
 /**
@@ -3151,7 +3160,7 @@ void MakePlrPath(Player &player, Point targetPosition, bool endspace)
 		path--;
 	}
 
-	path = d2::StraightenPath([&player](Point position) { return PosOkPlayer(player, position); }, player.position.future, player.walkpath, path);
+	path = d2::StraightenPath([&player](Point position) { return PosOkPlayer(player, position); }, player.position.future, player.walkpath, path, player.walkSegLen);
 
 	player.walkpath[path] = WALK_NONE;
 }

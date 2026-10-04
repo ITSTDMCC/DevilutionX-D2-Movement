@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 
+#include "d2mod.h"
 #include "diablo.h"
 #include "engine.h"
 #include "engine/actor_position.hpp"
@@ -277,6 +278,10 @@ struct Player {
 	uint32_t _pNextExper;
 	PLR_MODE _pmode;
 	int8_t walkpath[MaxPathLength];
+	/** Diablo 2 mod: length of the straight segment starting at each walkpath step (0 = continues the previous one). */
+	uint8_t walkSegLen[MaxPathLength];
+	/** Diablo 2 mod: render-only glide along the straight line (not saved or synced). */
+	d2::GlideState glide;
 	bool plractive;
 	action_id destAction;
 	int destParam1;

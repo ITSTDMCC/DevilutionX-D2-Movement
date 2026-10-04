@@ -9,6 +9,7 @@
 
 #include <fmt/format.h>
 
+#include "d2mod.h"
 #include "control.h"
 #include "engine/load_file.hpp"
 #include "engine/palette.h"
@@ -655,6 +656,7 @@ void DrawAutomapPlr(const Surface &out, const Displacement &myPlayerOffset, int 
 	Displacement playerOffset = {};
 	if (player.isWalking())
 		playerOffset = GetOffsetForWalking(player.AnimInfo, player._pdir);
+	playerOffset += d2::GlideCorrection(player);
 
 	Point base = {
 		((playerOffset.deltaX + myPlayerOffset.deltaX) * AutoMapScale / 100 / 2) + (px - py) * AmLine(16) + gnScreenWidth / 2,
@@ -909,6 +911,7 @@ void DrawAutomap(const Surface &out)
 	Displacement myPlayerOffset = {};
 	if (myPlayer.isWalking())
 		myPlayerOffset = GetOffsetForWalking(myPlayer.AnimInfo, myPlayer._pdir, true);
+	myPlayerOffset -= d2::GlideCorrection(myPlayer);
 	myPlayerOffset += Displacement { -1, (leveltype != DTYPE_CAVES) ? TILE_HEIGHT - 1 : -1 };
 
 	int d = (AutoMapScale * 64) / 100;

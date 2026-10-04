@@ -21,6 +21,30 @@ struct Monster;
 
 namespace d2 {
 
+/**
+ * Render-only state that draws a hero on the exact straight line to where they are going,
+ * while the game logic keeps stepping tile to tile (collision, networking and saves are unchanged).
+ * Positions are screen pixels in 1/256 units.
+ */
+struct GlideState {
+	bool active = false;
+	/** A glide step is in progress (counted into stepsDone when it finishes). */
+	bool inStep = false;
+	uint8_t totalSteps = 0;
+	uint8_t stepsDone = 0;
+	/** Where the glide started on screen, which can be between tiles. */
+	int32_t fromX = 0;
+	int32_t fromY = 0;
+	Point toTile;
+	Point stepStart;
+	int32_t stepVecX = 0;
+	int32_t stepVecY = 0;
+	Direction facing = Direction::South;
+	/** Leftover offset after an interrupted glide; eases back to zero. */
+	int32_t residualX = 0;
+	int32_t residualY = 0;
+};
+
 /** Running is on by default, like toggling run on in Diablo 2. */
 constexpr bool RunByDefault = true;
 
@@ -69,9 +93,6 @@ bool PlayerFlinches(const Player &player, int dam);
 /** @brief Should this hit put the monster into hit recovery? @p dam is in 1/64 HP units. */
 bool MonsterFlinches(const Monster &monster, int dam);
 
-/** How many upcoming steps decide which way the hero faces while walking a straightened path. */
-constexpr int WalkFacingLookahead = 8;
-
 /**
  * @brief Replace stretches of an A* path with straight lines where nothing blocks them, so the hero
  * moves along the true line to the target (mixing the two nearest of the 8 step directions) instead of
@@ -80,18 +101,32 @@ constexpr int WalkFacingLookahead = 8;
  * @param start Tile the path starts from
  * @param path Step codes (WALK_*), rewritten in place
  * @param length Number of steps in @p path
+ * @param segmentLengths Optional output: at the first step of each straight segment its length in steps, otherwise 0
  * @return New number of steps (never more than @p length)
  */
-int StraightenPath(tl::function_ref<bool(Point)> posOk, Point start, int8_t path[MaxPathLength], int length);
+int StraightenPath(tl::function_ref<bool(Point)> posOk, Point start, int8_t path[MaxPathLength], int length, uint8_t segmentLengths[MaxPathLength] = nullptr);
 
 /** @brief Tile displacement for a WALK_* step code. */
 Displacement WalkStepDisplacement(int8_t step);
 
 /**
- * @brief Direction the hero's sprite should face while walking: towards a point a few steps ahead,
- * so the sprite holds steady while the steps alternate between two directions.
+ * @brief Begin a walking step: start or continue the glide for the current straight segment.
+ * Call before the walk state is set up, while walkpath[0] is the step being taken.
+ * @return The direction the sprite should face (nearest of the 8 art directions on screen).
  */
-Direction WalkFacing(const Player &player);
+Direction GlideStartStep(Player &player);
+
+/** @brief The step that GlideStartStep prepared could not be taken. */
+void GlideCancelStep(Player &player);
+
+/** @brief Per game tick upkeep: ends glides when the hero stops and eases leftovers to zero. */
+void GlideTick(Player &player);
+
+/** @brief Forget any glide, e.g. on level change or teleport. */
+void GlideReset(Player &player);
+
+/** @brief Screen offset to add to where the engine would draw this hero. */
+Displacement GlideCorrection(const Player &player);
 
 /** @brief Toggle between walking and running (Diablo 2's R key). */
 void ToggleRun();

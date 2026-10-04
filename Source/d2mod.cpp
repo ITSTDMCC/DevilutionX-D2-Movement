@@ -7,11 +7,13 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <climits>
 #include <cstdint>
 
 #include <SDL.h>
 
 #include "engine.h"
+#include "engine/animationinfo.h"
 #include "monster.h"
 #include "msg.h"
 #include "multi.h"
@@ -80,10 +82,19 @@ Displacement WalkStepDisplacement(int8_t step)
 	}
 }
 
-int StraightenPath(tl::function_ref<bool(Point)> posOk, Point start, int8_t path[MaxPathLength], int length)
+int StraightenPath(tl::function_ref<bool(Point)> posOk, Point start, int8_t path[MaxPathLength], int length, uint8_t segmentLengths[MaxPathLength])
 {
-	if (length < 3)
+	if (segmentLengths != nullptr) {
+		for (size_t k = 0; k < MaxPathLength; k++)
+			segmentLengths[k] = 0;
+	}
+	if (length < 3) {
+		if (segmentLengths != nullptr) {
+			for (int k = 0; k < length; k++)
+				segmentLengths[k] = 1;
+		}
 		return length;
+	}
 
 	// Tiles the original path visits, including the start
 	Point waypoints[MaxPathLength + 1];
@@ -92,9 +103,11 @@ int StraightenPath(tl::function_ref<bool(Point)> posOk, Point start, int8_t path
 		waypoints[i + 1] = waypoints[i] + WalkStepDisplacement(path[i]);
 
 	int8_t straightened[MaxPathLength];
+	uint8_t lengths[MaxPathLength] = {};
 	int newLength = 0;
 	int i = 0;
 	while (i < length) {
+		const int segmentStart = newLength;
 		// Find the furthest waypoint we can reach in a straight line; the next waypoint always works
 		int j = length;
 		while (j > i + 1 && !IsLineWalkable(posOk, waypoints[i], waypoints[j]))
@@ -111,22 +124,203 @@ int StraightenPath(tl::function_ref<bool(Point)> posOk, Point start, int8_t path
 				previous = next;
 			}
 		}
+		lengths[segmentStart] = static_cast<uint8_t>(newLength - segmentStart);
 		i = j;
 	}
 
-	for (int k = 0; k < newLength; k++)
+	for (int k = 0; k < newLength; k++) {
 		path[k] = straightened[k];
+		if (segmentLengths != nullptr)
+			segmentLengths[k] = lengths[k];
+	}
 	return newLength;
 }
 
-Direction WalkFacing(const Player &player)
+namespace {
+
+constexpr int32_t Fixed = 256;
+
+/** Screen position of a tile's origin in 1/256 pixels (same projection the renderer uses). */
+void TileToScreen(Point tile, int32_t &x, int32_t &y)
 {
-	Point target = player.position.tile;
-	for (int i = 0; i < WalkFacingLookahead && i < static_cast<int>(MaxPathLength) && player.walkpath[i] != WALK_NONE; i++)
-		target += WalkStepDisplacement(player.walkpath[i]);
-	if (target == player.position.tile)
-		return player._pdir;
-	return GetDirection(player.position.tile, target);
+	x = (tile.x - tile.y) * 32 * Fixed;
+	y = (tile.x + tile.y) * 16 * Fixed;
+}
+
+/** Visual position after @p progress / @p scale of the glide. */
+void GlidePosition(const GlideState &glide, int64_t progress, int64_t scale, int32_t &x, int32_t &y)
+{
+	int32_t toX;
+	int32_t toY;
+	TileToScreen(glide.toTile, toX, toY);
+	x = glide.fromX + static_cast<int32_t>((toX - glide.fromX) * progress / scale);
+	y = glide.fromY + static_cast<int32_t>((toY - glide.fromY) * progress / scale);
+}
+
+/** Nearest of the 8 sprite directions to a screen space vector. */
+Direction ScreenFacing(int32_t vx, int32_t vy, Direction fallback)
+{
+	if (vx == 0 && vy == 0)
+		return fallback;
+	struct Candidate {
+		Direction dir;
+		int64_t ux;
+		int64_t uy;
+	};
+	// Unit vectors (x1000) of each sprite direction as drawn on screen
+	constexpr Candidate Candidates[8] = {
+		{ Direction::South, 0, 1000 },
+		{ Direction::SouthWest, -894, 447 },
+		{ Direction::West, -1000, 0 },
+		{ Direction::NorthWest, -894, -447 },
+		{ Direction::North, 0, -1000 },
+		{ Direction::NorthEast, 894, -447 },
+		{ Direction::East, 1000, 0 },
+		{ Direction::SouthEast, 894, 447 },
+	};
+	Direction best = fallback;
+	int64_t bestScore = INT64_MIN;
+	for (const Candidate &candidate : Candidates) {
+		const int64_t score = candidate.ux * vx + candidate.uy * vy;
+		if (score > bestScore) {
+			bestScore = score;
+			best = candidate.dir;
+		}
+	}
+	return best;
+}
+
+void FinishGlideStep(GlideState &glide)
+{
+	if (glide.active && glide.inStep) {
+		glide.stepsDone++;
+		glide.inStep = false;
+	}
+}
+
+} // namespace
+
+Direction GlideStartStep(Player &player)
+{
+	GlideState &glide = player.glide;
+	FinishGlideStep(glide);
+
+	const Point stepStart = player.position.tile;
+	const bool continues = glide.active && glide.stepsDone < glide.totalSteps && player.walkSegLen[0] == 0;
+	if (!continues) {
+		// Start the new straight segment from wherever the hero is drawn right now, so nothing jumps
+		int32_t fromX;
+		int32_t fromY;
+		if (glide.active) {
+			GlidePosition(glide, glide.stepsDone, std::max<int>(glide.totalSteps, 1), fromX, fromY);
+		} else {
+			TileToScreen(stepStart, fromX, fromY);
+			fromX += glide.residualX;
+			fromY += glide.residualY;
+		}
+
+		const int length = std::max<int>(player.walkSegLen[0], 1);
+		Point toTile = stepStart;
+		for (int i = 0; i < length && i < static_cast<int>(MaxPathLength) && player.walkpath[i] != WALK_NONE; i++)
+			toTile += WalkStepDisplacement(player.walkpath[i]);
+
+		int32_t startX;
+		int32_t startY;
+		int32_t toX;
+		int32_t toY;
+		TileToScreen(stepStart, startX, startY);
+		TileToScreen(toTile, toX, toY);
+
+		glide.active = true;
+		glide.totalSteps = static_cast<uint8_t>(length);
+		glide.stepsDone = 0;
+		glide.fromX = fromX;
+		glide.fromY = fromY;
+		glide.toTile = toTile;
+		glide.residualX = 0;
+		glide.residualY = 0;
+		// Facing only depends on tiles, so it is identical on every client
+		glide.facing = ScreenFacing(toX - startX, toY - startY, player._pdir);
+	}
+
+	int32_t startX;
+	int32_t startY;
+	int32_t endX;
+	int32_t endY;
+	TileToScreen(stepStart, startX, startY);
+	TileToScreen(stepStart + WalkStepDisplacement(player.walkpath[0]), endX, endY);
+	glide.inStep = true;
+	glide.stepStart = stepStart;
+	glide.stepVecX = endX - startX;
+	glide.stepVecY = endY - startY;
+	return glide.facing;
+}
+
+void GlideCancelStep(Player &player)
+{
+	player.glide.inStep = false;
+}
+
+void GlideTick(Player &player)
+{
+	GlideState &glide = player.glide;
+	if (player.isWalking())
+		return;
+
+	if (glide.active) {
+		FinishGlideStep(glide);
+		int32_t x;
+		int32_t y;
+		GlidePosition(glide, glide.stepsDone, std::max<int>(glide.totalSteps, 1), x, y);
+		int32_t tileX;
+		int32_t tileY;
+		TileToScreen(player.position.tile, tileX, tileY);
+		glide.residualX = x - tileX;
+		glide.residualY = y - tileY;
+		glide.active = false;
+		// Anything bigger than a tile means the hero was moved some other way (teleport, level change)
+		if (std::abs(glide.residualX) > 64 * Fixed || std::abs(glide.residualY) > 32 * Fixed) {
+			glide.residualX = 0;
+			glide.residualY = 0;
+		}
+		return;
+	}
+
+	// Ease leftovers back onto the tile over a few ticks
+	glide.residualX = glide.residualX * 2 / 3;
+	glide.residualY = glide.residualY * 2 / 3;
+	if (std::abs(glide.residualX) < Fixed / 2)
+		glide.residualX = 0;
+	if (std::abs(glide.residualY) < Fixed / 2)
+		glide.residualY = 0;
+}
+
+void GlideReset(Player &player)
+{
+	player.glide = {};
+}
+
+Displacement GlideCorrection(const Player &player)
+{
+	const GlideState &glide = player.glide;
+	if (!glide.active || !glide.inStep || !player.isWalking())
+		return { glide.residualX / Fixed, glide.residualY / Fixed };
+
+	// Where the engine draws the hero: the step's start tile plus progress along this step
+	const int64_t base = AnimationInfo::baseValueFraction;
+	const int64_t progress = std::min<int64_t>(player.AnimInfo.getAnimationProgress(), base);
+	int32_t engineX;
+	int32_t engineY;
+	TileToScreen(glide.stepStart, engineX, engineY);
+	engineX += static_cast<int32_t>(glide.stepVecX * progress / base);
+	engineY += static_cast<int32_t>(glide.stepVecY * progress / base);
+
+	// Where we want the hero: the same fraction of the way along the straight segment
+	int32_t glideX;
+	int32_t glideY;
+	GlidePosition(glide, glide.stepsDone * base + progress, std::max<int64_t>(glide.totalSteps, 1) * base, glideX, glideY);
+
+	return { (glideX - engineX) / Fixed, (glideY - engineY) / Fixed };
 }
 
 int ChanceToHit(int attackRating, int defense, int attackerLevel, int defenderLevel)

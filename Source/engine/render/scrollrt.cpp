@@ -11,6 +11,7 @@
 #include "automap.h"
 #include "controls/plrctrls.h"
 #include "cursor.h"
+#include "d2mod.h"
 #include "dead.h"
 #include "doom.h"
 #include "engine/backbuffer_state.hpp"
@@ -746,6 +747,8 @@ void DrawPlayerHelper(const Surface &out, const Player &player, Point tilePositi
 	if (player.isWalking()) {
 		offset = GetOffsetForWalking(player.AnimInfo, player._pdir);
 	}
+	// Diablo 2 mod: draw the hero on the straight line they are gliding along
+	offset += d2::GlideCorrection(player);
 
 	const Point playerRenderPosition { targetBufferPosition + offset };
 
@@ -1006,6 +1009,16 @@ void CalcFirstTilePosition(Point &position, Displacement &offset)
 
 	position += tileShift;
 
+	// Diablo 2 mod: the camera follows the hero's glide, so draw a margin of extra tiles around the view
+	const Displacement glideCorrection = d2::GlideCorrection(myPlayer);
+	if (glideCorrection != Displacement {}) {
+		offset -= glideCorrection;
+		offset.deltaY -= TILE_HEIGHT;
+		position += Direction::North;
+		offset.deltaX -= TILE_WIDTH;
+		position += Direction::West;
+	}
+
 	// Skip rendering parts covered by the panels
 	if (CanPanelsCoverView() && (IsLeftPanelOpen() || IsRightPanelOpen())) {
 		int multiplier = (*sgOptions.Graphics.zoom) ? 1 : 2;
@@ -1063,6 +1076,12 @@ void DrawGame(const Surface &fullOut, Point position, Displacement offset)
 	}
 
 	UpdateMissilesRendererData();
+
+	// Diablo 2 mod: matching margin for the glide camera shift (see CalcFirstTilePosition)
+	if (d2::GlideCorrection(*MyPlayer) != Displacement {}) {
+		rows += 4;
+		columns += 2;
+	}
 
 	// Draw areas moving in and out of the screen
 	if (MyPlayer->isWalking()) {
