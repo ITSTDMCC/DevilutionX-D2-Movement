@@ -444,6 +444,153 @@ TEST_F(D2Harness, SlipsBetweenBarrelsAtAnAngle)
 	std::printf("BARRELS trips=%d slides=%d\n", trips, slides);
 }
 
+TEST_F(D2Harness, SqueezesDiagonallyPastChests)
+{
+	// Two chests touching corners right on the way: Diablo 1 lets heroes step diagonally between them
+	int trips = 0;
+	int hops = 0;
+	for (int sx = 40; sx <= 44; sx++) {
+		for (int sy = 42; sy <= 46; sy++) {
+			for (const Point target : { Point { 48, 37 }, Point { 46, 36 }, Point { 49, 39 } }) {
+				for (int fine = 0; fine < 3; fine++) {
+					ClearLevel();
+					leveltype = DTYPE_CATHEDRAL;
+					SolidObject(0, { 45, 41 });
+					SolidObject(1, { 44, 40 });
+					Player &player = SetupHero({ sx, sy }, false);
+					if (IsTileSolid({ sx, sy }) || IsTileSolid(target))
+						continue;
+					const int fx[3] = { 0, 90, -100 };
+					const int fy[3] = { 0, -70, 60 };
+					const uint64_t hopsBefore = d2probe::Count(d2probe::Id::d2_CornerHop);
+					d2::FreeMoveSetTarget(player, target, fx[fine], fy[fine], true);
+					for (int tick = 0; tick < 600 && d2::FreeMoveActive(player); tick++) {
+						ProcessPlayers();
+						d2probe::CheckTick();
+						ASSERT_FALSE(player.position.tile == Point(45, 41) || player.position.tile == Point(44, 40)) << "inside a chest";
+					}
+					hops += static_cast<int>(d2probe::Count(d2probe::Id::d2_CornerHop) - hopsBefore);
+					// Only trips stock Diablo 1 path finding can make count
+					int8_t path[MaxPathLength];
+					if (FindPath([&player](Point position) { return PosOkPlayer(player, position); }, Point { sx, sy }, target, path) == 0)
+						continue;
+					EXPECT_EQ(player.position.tile, target) << "stuck from (" << sx << "," << sy << ") fine " << fine << " heading to (" << target.x << "," << target.y << ") at (" << player.position.tile.x << "," << player.position.tile.y << ")";
+					trips++;
+				}
+			}
+		}
+	}
+	std::printf("CHESTS trips=%d corner_cuts=%d\n", trips, hops);
+	EXPECT_GT(trips, 0);
+}
+
+TEST_F(D2Harness, NeverStuckAmongScatteredObjects)
+{
+	// A room strewn with chests and barrels: every trip stock path finding can make, the mod must finish
+	uint32_t seed = 12345;
+	auto random = [&seed](int n) {
+		seed = seed * 1103515245U + 12345U;
+		return static_cast<int>((seed >> 16) % static_cast<uint32_t>(n));
+	};
+	int trips = 0;
+	int stuck = 0;
+	for (int layout = 0; layout < 40; layout++) {
+		ClearLevel();
+		leveltype = DTYPE_CATHEDRAL;
+		int objects = 0;
+		for (int i = 0; i < 70; i++) {
+			const Point tile { 30 + random(24), 30 + random(24) };
+			if (dObject[tile.x][tile.y] == 0 && objects < 120)
+				SolidObject(objects++, tile);
+		}
+		for (int t = 0; t < 12; t++) {
+			const Point start { 30 + random(24), 30 + random(24) };
+			const Point target { 30 + random(24), 30 + random(24) };
+			if (dObject[start.x][start.y] != 0 || dObject[target.x][target.y] != 0 || start == target)
+				continue;
+			std::memset(dPlayer, 0, sizeof(dPlayer));
+			Player &player = SetupHero(start, false);
+			int8_t path[MaxPathLength];
+			if (FindPath([&player](Point position) { return PosOkPlayer(player, position); }, start, target, path) == 0)
+				continue;
+			d2::FreeMoveSetTarget(player, target, random(200) - 100, random(200) - 100, true);
+			for (int tick = 0; tick < 900 && d2::FreeMoveActive(player); tick++) {
+				ProcessPlayers();
+				d2probe::CheckTick();
+				ASSERT_EQ(dObject[player.position.tile.x][player.position.tile.y], 0) << "inside an object";
+			}
+			trips++;
+			if (player.position.tile != target) {
+				stuck++;
+				ADD_FAILURE() << "layout " << layout << ": stuck at (" << player.position.tile.x << "," << player.position.tile.y << ") going from ("
+				              << start.x << "," << start.y << ") to (" << target.x << "," << target.y << ")";
+			}
+		}
+	}
+	std::printf("OBJECTS trips=%d stuck=%d corner_cuts=%llu slides=%llu repaths=%llu\n", trips, stuck,
+	    static_cast<unsigned long long>(d2probe::Count(d2probe::Id::d2_CornerHop)),
+	    static_cast<unsigned long long>(d2probe::Count(d2probe::Id::d2_MoveSlide)),
+	    static_cast<unsigned long long>(d2probe::Count(d2probe::Id::d2_Repath)));
+	EXPECT_GT(trips, 200);
+}
+
+TEST_F(D2Harness, FacesTheWayItMovesOnScreen)
+{
+	// Walk straight in 72 directions: the sprite must be the walk sprite closest to the motion on screen
+	// (independently computed here from the screen angle) and must not flicker during the walk
+	const double spriteAngles[8] = { 90.0, 153.43, 180.0, 206.57, 270.0, 333.43, 0.0, 26.57 }; // S SW W NW N NE E SE, screen degrees (y down)
+	int wrong = 0;
+	int flickers = 0;
+	for (int a = 0; a < 72; a++) {
+		const double angle = a * 5.0 + 2.5; // avoid exact sprite boundaries
+		const double rad = angle * 3.14159265358979 / 180.0;
+		// screen direction -> world delta: sx = (dx - dy) * 32, sy = (dx + dy) * 16
+		const double sxv = std::cos(rad), syv = std::sin(rad);
+		const double wdx = (sxv / 32.0 + syv / 16.0) / 2.0, wdy = (syv / 16.0 - sxv / 32.0) / 2.0;
+		const double scale = 14.0 / std::max(std::abs(wdx), std::abs(wdy));
+		const Point target = Start + Displacement { static_cast<int>(std::lround(wdx * scale)), static_cast<int>(std::lround(wdy * scale)) };
+		ClearLevel();
+		leveltype = DTYPE_CATHEDRAL;
+		Player &player = SetupHero(Start, false);
+		d2::FreeMoveSetTarget(player, target, 0, 0, true);
+		// expected sprite from the real screen angle of this trip
+		const int tdx = target.x - Start.x, tdy = target.y - Start.y;
+		const double realAngle = std::atan2((tdx + tdy) * 16.0, (tdx - tdy) * 32.0) * 180.0 / 3.14159265358979;
+		int expected = 0;
+		double bestDiff = 1e9;
+		for (int d = 0; d < 8; d++) {
+			double diff = std::fmod(std::abs(realAngle - spriteAngles[d]) + 360.0, 360.0);
+			diff = std::min(diff, 360.0 - diff);
+			if (diff < bestDiff) {
+				bestDiff = diff;
+				expected = d;
+			}
+		}
+		Direction last = player._pdir;
+		int changes = 0;
+		for (int tick = 0; tick < 600 && d2::FreeMoveActive(player); tick++) {
+			ProcessPlayers();
+			if (d2::FreeMoveActive(player) && tick > 0 && player.freeMove.facing != last)
+				changes++;
+			last = player.freeMove.facing;
+		}
+		if (static_cast<int>(last) != expected) {
+			// within 4 degrees of a boundary either neighbour is acceptable (hysteresis)
+			double diff = std::fmod(std::abs(realAngle - spriteAngles[static_cast<int>(last)]) + 360.0, 360.0);
+			diff = std::min(diff, 360.0 - diff);
+			if (diff > bestDiff + 4.0) {
+				wrong++;
+				ADD_FAILURE() << "moving at " << realAngle << " degrees on screen faces sprite " << static_cast<int>(last) << ", expected " << expected;
+			}
+		}
+		if (changes > 0) {
+			flickers++;
+			ADD_FAILURE() << "facing changed " << changes << " times walking straight at " << realAngle << " degrees";
+		}
+	}
+	std::printf("FACING directions=72 wrong=%d flickering=%d\n", wrong, flickers);
+}
+
 TEST_F(D2Harness, WallsAreNeverEntered)
 {
 	ClearLevel();

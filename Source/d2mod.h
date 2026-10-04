@@ -85,6 +85,13 @@ D2Heading D2TangentTableEntry(int tangent);
 
 /** @brief Diablo 1 sprite direction for a Diablo 2 64 step direction (players have 8 directions in both games). */
 Direction FacingFromDir64(int dir64);
+
+/**
+ * @brief Sprite direction for moving by a world delta: whichever of the 8 Diablo 1 walk sprites points closest to
+ * the motion as it appears on screen. Keeps @p current unless another sprite is clearly closer, so a hero moving
+ * along a boundary between two sprites does not flicker.
+ */
+Direction FacingForMotion(int64_t dx, int64_t dy, Direction current);
 constexpr int MaxMoveWaypoints = MaxPathLength + 1;
 
 /**

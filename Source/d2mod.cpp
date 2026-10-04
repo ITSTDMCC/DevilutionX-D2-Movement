@@ -186,6 +186,48 @@ D2Heading D2DirectionVector(int64_t dx, int64_t dy)
 	return heading;
 }
 
+Direction FacingForMotion(int64_t dx, int64_t dy, Direction current)
+{
+	D2_PROBE_FN();
+	if (dx == 0 && dy == 0)
+		return current;
+	// One tile is 64 pixels across and 32 down on screen
+	const int64_t sx = (dx - dy) * 32;
+	const int64_t sy = (dx + dy) * 16;
+	struct Candidate {
+		Direction dir;
+		int64_t ux;
+		int64_t uy;
+	};
+	// Unit vectors (x1000) of each walk sprite as drawn on screen
+	constexpr Candidate Candidates[8] = {
+		{ Direction::South, 0, 1000 },
+		{ Direction::SouthWest, -894, 447 },
+		{ Direction::West, -1000, 0 },
+		{ Direction::NorthWest, -894, -447 },
+		{ Direction::North, 0, -1000 },
+		{ Direction::NorthEast, 894, -447 },
+		{ Direction::East, 1000, 0 },
+		{ Direction::SouthEast, 894, 447 },
+	};
+	Direction best = current;
+	int64_t bestScore = INT64_MIN;
+	int64_t currentScore = INT64_MIN;
+	for (const Candidate &candidate : Candidates) {
+		const int64_t score = candidate.ux * sx + candidate.uy * sy;
+		if (candidate.dir == current)
+			currentScore = score;
+		if (score > bestScore) {
+			bestScore = score;
+			best = candidate.dir;
+		}
+	}
+	// Hysteresis: stay with the current sprite while it is within about 4 degrees of the best one
+	if (currentScore > 0 && currentScore * 1000 >= bestScore * 998)
+		return current;
+	return best;
+}
+
 Direction FacingFromDir64(int dir64)
 {
 	D2_PROBE_FN();
@@ -566,6 +608,9 @@ void FreeMoveTick(Player &player)
 	const int32_t startY = move.y;
 	const uint8_t startWaypoint = move.waypointIndex;
 	bool slid = false;
+	bool hopped = false;
+	int32_t lastStepX = 0;
+	int32_t lastStepY = 0;
 	int64_t budget = speed;
 	while (budget > 0 && move.active) {
 		const int32_t wx = move.waypointX[move.waypointIndex];
@@ -582,11 +627,12 @@ void FreeMoveTick(Player &player)
 			budget -= steps;
 			move.carryX = 0;
 			move.carryY = 0;
-			if (steps > 0)
-				SetFacing(player, FacingFromDir64(D2DirectionVector(dx, dy).dir64));
+			if (!move.animating && steps > 0)
+				SetFacing(player, FacingForMotion(dx, dy, move.facing));
 		} else {
 			const D2Heading heading = D2DirectionVector(dx, dy);
-			SetFacing(player, FacingFromDir64(heading.dir64));
+			if (!move.animating)
+				SetFacing(player, FacingForMotion(dx, dy, move.facing));
 			// Scale the heading so its larger axis moves exactly the budget; keep remainders for the next tick
 			const int64_t major = std::max(std::abs(heading.x), std::abs(heading.y));
 			const int64_t fineX = budget * heading.x * 4096 / major + move.carryX;
@@ -598,6 +644,8 @@ void FreeMoveTick(Player &player)
 			budget = 0;
 		}
 
+		const int32_t beforeX = move.x;
+		const int32_t beforeY = move.y;
 		if (!MoveTo(player, nextX, nextY)) {
 			D2_PROBE(d2_MoveBlocked);
 			const Point blockedTile = TileOf(nextX, nextY);
@@ -605,6 +653,33 @@ void FreeMoveTick(Player &player)
 				// Someone stepped into the way: stop, like Diablo 1 does
 				FinishMoving(player);
 				return;
+			}
+			// Grazing the corner of an object (a chest, a barrel) while heading diagonally: Diablo 1 lets heroes step
+			// diagonally past objects, so cut through the corner point into the diagonal tile instead of stopping
+			const int sx = wx > move.x ? 1 : (wx < move.x ? -1 : 0);
+			const int sy = wy > move.y ? 1 : (wy < move.y ? -1 : 0);
+			const Point here = player.position.tile;
+			const Point diagonal = here + Displacement { sx, sy };
+			if (!hopped && sx != 0 && sy != 0 && move.waypointCount + 2 <= MaxMoveWaypoints
+			    && (blockedTile == here + Displacement { sx, 0 } || blockedTile == here + Displacement { 0, sy })
+			    && CanCross(player, here, diagonal)) {
+				D2_PROBE(d2_CornerHop);
+				hopped = true;
+				const int32_t cornerX = here.x * SubTile + sx * (SubTile / 2);
+				const int32_t cornerY = here.y * SubTile + sy * (SubTile / 2);
+				for (int i = move.waypointCount - 1; i >= move.waypointIndex; i--) {
+					move.waypointX[i + 2] = move.waypointX[i];
+					move.waypointY[i + 2] = move.waypointY[i];
+				}
+				// Just inside this tile at the corner, then just inside the diagonal tile
+				move.waypointX[move.waypointIndex] = cornerX - 2 * sx;
+				move.waypointY[move.waypointIndex] = cornerY - 2 * sy;
+				move.waypointX[move.waypointIndex + 1] = cornerX + 2 * sx;
+				move.waypointY[move.waypointIndex + 1] = cornerY + 2 * sy;
+				move.waypointCount += 2;
+				move.carryX = 0;
+				move.carryY = 0;
+				continue;
 			}
 			// Clipping the corner of a wall, barrel or other object: slide along it on the axis that is free,
 			// trying first whichever axis brings the hero closer to where they are going
@@ -620,6 +695,8 @@ void FreeMoveTick(Player &player)
 			if (moved) {
 				D2_PROBE(d2_MoveSlide);
 				slid = true;
+				lastStepX = move.x - beforeX;
+				lastStepY = move.y - beforeY;
 				move.carryX = 0;
 				move.carryY = 0;
 				break; // re-aim next tick
@@ -638,11 +715,29 @@ void FreeMoveTick(Player &player)
 			return;
 		}
 
+		if (move.x != beforeX || move.y != beforeY) {
+			lastStepX = move.x - beforeX;
+			lastStepY = move.y - beforeY;
+		}
 		if (move.x == wx && move.y == wy) {
 			move.waypointIndex++;
 			if (move.waypointIndex >= move.waypointCount)
 				move.active = false;
 		}
+	}
+
+	// Face the way the hero is going on screen. Single ticks are too short to judge by (rounding makes them wobble),
+	// so look at where the path leads, skipping the tiny legs of a corner cut; when sliding along an obstacle,
+	// face the way the slide actually went.
+	if (slid) {
+		SetFacing(player, FacingForMotion(lastStepX, lastStepY, move.facing));
+	} else if (move.active) {
+		int j = move.waypointIndex;
+		while (j + 1 < move.waypointCount && std::max(std::abs(move.waypointX[j] - move.x), std::abs(move.waypointY[j] - move.y)) < SubTile / 2)
+			j++;
+		SetFacing(player, FacingForMotion(move.waypointX[j] - move.x, move.waypointY[j] - move.y, move.facing));
+	} else if (lastStepX != 0 || lastStepY != 0) {
+		SetFacing(player, FacingForMotion(lastStepX, lastStepY, move.facing));
 	}
 
 	if (!move.active) {

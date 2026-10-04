@@ -115,6 +115,18 @@ def main():
         if m:
             check('fps: movement logic under 1% of a frame', float(m.group(1)) < 7.0,
                   f'{m.group(1)} microseconds per tick (a frame at 1,400 fps is about 700)', 'fps')
+        m = re.search(r'OBJECTS trips=(\d+) stuck=(\d+) corner_cuts=(\d+) slides=(\d+) repaths=(\d+)', text)
+        if m:
+            check('collision: never stuck among scattered chests and barrels', int(m.group(2)) == 0 and 'NeverStuckAmongScatteredObjects' not in failed_tests,
+                  f'{m.group(1)} random trips stock path finding can make, {m.group(2)} stuck ({m.group(3)} corner cuts, {m.group(4)} slides, {m.group(5)} re-paths)', 'parity')
+        m = re.search(r'CHESTS trips=(\d+) corner_cuts=(\d+)', text)
+        if m:
+            check('collision: squeezes diagonally past chests', 'SqueezesDiagonallyPastChests' not in failed_tests,
+                  f'{m.group(1)} trips past two corner-touching chests, {m.group(2)} corner cuts', 'parity')
+        m = re.search(r'FACING directions=(\d+) wrong=(\d+) flickering=(\d+)', text)
+        if m:
+            check('facing: sprite matches on-screen motion, no flicker', m.group(2) == '0' and m.group(3) == '0',
+                  f'{m.group(1)} directions: {m.group(2)} wrong, {m.group(3)} flickering', 'parity')
         m = re.search(r'GAMEPAD frames=(\d+) over 64 ticks, previews skipped=(\d+)', text)
         if m:
             check('gamepad: walk cycle keeps animating', 'GamepadWalkKeepsAnimating' not in failed_tests,
