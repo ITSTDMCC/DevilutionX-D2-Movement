@@ -27,7 +27,7 @@ namespace d2probe {
 	X(d2_FreeMoveSetTarget) X(d2_FreeMoveTick) X(d2_FreeMoveStop) X(d2_FreeMoveReset) X(d2_FreeMoveInterrupt) \
 	X(d2_FreeMoveTargetTile) X(d2_GlideCorrection) X(d2_SetCursorFine) X(d2_SendWalkToCursor) \
 	X(d2_OnWalkFine) X(d2_ToggleRun) X(d2_UpdateLocalRunState) X(d2_ShareRunState) \
-	X(d2_StraightenPath) X(d2_MoveTo) X(d2_MoveBlocked) X(d2_MoveSlide) X(d2_CornerHop) X(d2_Repath) X(d2_PreviewSkipped) X(d2_DirectionVector) \
+	X(d2_StraightenPath) X(d2_MoveTo) X(d2_MoveBlocked) X(d2_MoveSlide) X(d2_CornerHop) X(d2_Repath) X(d2_UnstraightenedPath) X(d2_PreviewSkipped) X(d2_DirectionVector) \
 	X(d2_ChanceToHit) X(d2_PlayerFlinches) X(d2_MonsterFlinches) \
 	/* player.cpp: touched */ \
 	X(player_IsPlayerRunning) X(player_StartWalkAnimation) X(player_InitLevelChange) X(player_DoWalk) \

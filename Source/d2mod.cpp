@@ -335,6 +335,8 @@ int64_t IntSqrt(int64_t value)
 	return x;
 }
 
+bool IsOccupied(const Player &player, Point tile);
+
 /** Can the hero step from tile @p from into the neighbouring tile @p to? */
 bool CanCross(const Player &player, Point from, Point to)
 {
@@ -352,23 +354,45 @@ bool CanCross(const Player &player, Point from, Point to)
 bool IsSubTileLineClear(const Player &player, int32_t fromX, int32_t fromY, int32_t toX, int32_t toY)
 {
 	D2_PROBE_FN();
+	// Walk every tile the segment touches, exactly (no sampling, so no corner is ever missed). Tile k covers
+	// sub-tile units 256k-128 .. 256k+127.
 	const int64_t dx = toX - fromX;
 	const int64_t dy = toY - fromY;
-	const int64_t length = IntSqrt(dx * dx + dy * dy);
-	// Sample every quarter tile; diagonal tile changes are checked with the corner rule
-	const int64_t samples = std::max<int64_t>(1, length / (SubTile / 4));
-	Point previous = TileOf(fromX, fromY);
-	for (int64_t i = 1; i <= samples; i++) {
-		const Point tile = TileOf(static_cast<int32_t>(fromX + dx * i / samples), static_cast<int32_t>(fromY + dy * i / samples));
-		if (tile == previous)
-			continue;
-		if (std::abs(tile.x - previous.x) > 1 || std::abs(tile.y - previous.y) > 1)
+	const int stepX = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+	const int stepY = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+	const int64_t adx = std::abs(dx);
+	const int64_t ady = std::abs(dy);
+	Point tile = TileOf(fromX, fromY);
+	const Point end = TileOf(toX, toY);
+	// Distance from the start to the first unit of the next tile along each axis
+	int64_t nextX = stepX > 0 ? (tile.x * SubTile + SubTile / 2) - fromX : fromX - (tile.x * SubTile - SubTile / 2 - 1);
+	int64_t nextY = stepY > 0 ? (tile.y * SubTile + SubTile / 2) - fromY : fromY - (tile.y * SubTile - SubTile / 2 - 1);
+	for (int guard = 0; tile != end && guard < 2 * MaxPathLength * 2; guard++) {
+		// Which boundary does the segment reach first? Compare nextX / adx with nextY / ady without dividing.
+		// Within 2 units of a corner counts as through it (a diagonal step): tile edges round towards +x/+y,
+		// so a line meant to pass a corner exactly can miss it by a unit either way.
+		const int64_t major = std::max(adx, ady);
+		const bool nearCorner = stepX != 0 && stepY != 0 && std::abs(nextX * ady - nextY * adx) * major <= 2 * adx * ady;
+		const bool hitX = stepX != 0 && nextX <= adx && (stepY == 0 || nearCorner || nextX * ady < nextY * adx);
+		const bool hitY = stepY != 0 && nextY <= ady && (stepX == 0 || nearCorner || nextY * adx < nextX * ady);
+		if (!hitX && !hitY)
+			break;
+		Point next = tile;
+		if (hitX)
+			next.x += stepX;
+		if (hitY)
+			next.y += stepY;
+		// Exactly through a corner is a diagonal step: allowed wherever Diablo 1 allows one (CanCross), and
+		// walked as a corner cut so the hero never touches either side
+		if (!CanCross(player, tile, next))
 			return false;
-		if (!CanCross(player, previous, tile))
-			return false;
-		previous = tile;
+		tile = next;
+		if (hitX)
+			nextX += SubTile;
+		if (hitY)
+			nextY += SubTile;
 	}
-	return true;
+	return tile == end;
 }
 
 /** Put the hero's sub-tile position back on their tile if something else moved them. */
@@ -553,6 +577,9 @@ void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool en
 		if (length > 0 && !endspace)
 			length--;
 		if (length > 0) {
+			int8_t rawPath[MaxPathLength];
+			std::copy(path, path + length, rawPath);
+			const int rawLength = length;
 			uint8_t segments[MaxPathLength];
 			length = StraightenPath([&player](Point position) { return PosOkPlayer(player, position); }, start, path, length, segments);
 			Point cursor = start;
@@ -560,6 +587,22 @@ void FreeMoveSetTarget(Player &player, Point tile, int fineX, int fineY, bool en
 				cursor += WalkStepDisplacement(path[i]);
 				const bool segmentEnds = i + 1 == length || segments[i + 1] != 0;
 				if (segmentEnds && move.waypointCount < MaxMoveWaypoints) {
+					move.waypointX[move.waypointCount] = cursor.x * SubTile;
+					move.waypointY[move.waypointCount] = cursor.y * SubTile;
+					move.waypointCount++;
+				}
+			}
+			// The straightening works tile by tile; check each straight leg exactly and, if any would clip
+			// something, walk the path finder's own steps instead (every step is a legal Diablo 1 step)
+			bool legsClear = true;
+			for (int i = 1; i < move.waypointCount && legsClear; i++)
+				legsClear = IsSubTileLineClear(player, move.waypointX[i - 1], move.waypointY[i - 1], move.waypointX[i], move.waypointY[i]);
+			if (!legsClear) {
+				D2_PROBE(d2_UnstraightenedPath);
+				move.waypointCount = 0;
+				cursor = start;
+				for (int i = 0; i < rawLength && move.waypointCount < MaxMoveWaypoints; i++) {
+					cursor += WalkStepDisplacement(rawPath[i]);
 					move.waypointX[move.waypointCount] = cursor.x * SubTile;
 					move.waypointY[move.waypointCount] = cursor.y * SubTile;
 					move.waypointCount++;
@@ -660,13 +703,8 @@ void FreeMoveTick(Player &player)
 		if (!MoveTo(player, nextX, nextY)) {
 			D2_PROBE(d2_MoveBlocked);
 			const Point blockedTile = TileOf(nextX, nextY);
-			if (IsOccupied(player, blockedTile)) {
-				// Someone stepped into the way: stop, like Diablo 1 does
-				FinishMoving(player);
-				return;
-			}
-			// Grazing the corner of an object (a chest, a barrel) while heading diagonally: Diablo 1 lets heroes step
-			// diagonally past objects, so cut through the corner point into the diagonal tile instead of stopping
+			// Grazing a corner while heading diagonally (a chest, a barrel, a monster or another hero beside the way):
+			// Diablo 1 lets heroes step diagonally past them, so cut through the corner point into the diagonal tile
 			const int sx = wx > move.x ? 1 : (wx < move.x ? -1 : 0);
 			const int sy = wy > move.y ? 1 : (wy < move.y ? -1 : 0);
 			const Point here = player.position.tile;
@@ -694,6 +732,23 @@ void FreeMoveTick(Player &player)
 				budget = budgetBefore; // nothing was spent: the blocked step never happened
 				move.debt = 0;
 				continue;
+			}
+			if (IsOccupied(player, blockedTile)) {
+				// Someone is in the way: take the way round, as stock path finding would from here; stop only if
+				// there is none (then Diablo 1 would not move either)
+				if (move.repaths < 3) {
+					D2_PROBE(d2_Repath);
+					const uint8_t repaths = move.repaths + 1;
+					const Point goal = TileOf(move.goalX, move.goalY);
+					FreeMoveSetTarget(player, goal, move.goalX - goal.x * SubTile, move.goalY - goal.y * SubTile, move.goalEndspace);
+					move.repaths = repaths;
+					if (move.active) {
+						budget = budgetBefore;
+						continue;
+					}
+				}
+				FinishMoving(player);
+				return;
 			}
 			// Clipping the corner of a wall, barrel or other object: slide along it on the axis that is free,
 			// trying first whichever axis brings the hero closer to where they are going

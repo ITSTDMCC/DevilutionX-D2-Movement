@@ -135,6 +135,11 @@ def main():
         if m:
             check('facing: follows the mouse (held and clicking around objects)', m.group(2) == '0' and 'FacingFollowsTheMouse' not in failed_tests,
                   f'{m.group(1)} moving ticks checked, {m.group(2)} with the wrong sprite for 2+ ticks', 'parity')
+        m = re.search(r'TRAPS cases=(\d+) stuck=(\d+)', text)
+        if m:
+            check('collision: nothing traps the hero (chests, monsters, townspeople, heroes, walls; mouse held, click, gamepad)',
+                  m.group(2) == '0' and 'NothingTrapsTheHero' not in failed_tests,
+                  f'{m.group(1)} walk-into-then-head-off cases: {m.group(2)} stuck', 'parity')
         m = re.search(r'GAMEPAD frames=(\d+) over 64 ticks, previews skipped=(\d+)', text)
         if m:
             check('gamepad: walk cycle keeps animating', 'GamepadWalkKeepsAnimating' not in failed_tests,

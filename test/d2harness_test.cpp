@@ -56,7 +56,8 @@ void Wall(Point tile)
 
 Player &SetupHero(Point start, bool running)
 {
-	Players.resize(1);
+	Players.resize(2);
+	Players[1] = {};
 	MyPlayerId = 0;
 	MyPlayer = &Players[0];
 	Player &player = Players[0];
@@ -546,6 +547,167 @@ TEST_F(D2Harness, NeverStuckNextToAChest)
 	std::printf("CHESTSIDE cases=%d stuck=%d\n", cases, stuck);
 }
 
+enum class Blocker { Chest, Monster, Townsperson, OtherHero, Wall };
+enum class Control { MouseHeld, MouseClick, Gamepad };
+
+const char *Name(Blocker b)
+{
+	switch (b) {
+	case Blocker::Chest: return "chest";
+	case Blocker::Monster: return "monster";
+	case Blocker::Townsperson: return "townsperson";
+	case Blocker::OtherHero: return "other hero";
+	default: return "wall";
+	}
+}
+
+const char *Name(Control c)
+{
+	switch (c) {
+	case Control::MouseHeld: return "mouse held";
+	case Control::MouseClick: return "mouse click";
+	default: return "gamepad";
+	}
+}
+
+void PlaceBlocker(Blocker kind, Point tile)
+{
+	leveltype = kind == Blocker::Townsperson ? DTYPE_TOWN : DTYPE_CATHEDRAL;
+	switch (kind) {
+	case Blocker::Chest:
+		SolidObject(0, tile);
+		break;
+	case Blocker::Monster:
+	case Blocker::Townsperson:
+		Monsters[0] = {};
+		Monsters[0].hitPoints = 100 << 6;
+		Monsters[0].position.tile = Monsters[0].position.future = Monsters[0].position.old = tile;
+		dMonster[tile.x][tile.y] = 1;
+		break;
+	case Blocker::OtherHero:
+		Players[1] = {};
+		Players[1]._pHitPoints = 100 << 6;
+		dPlayer[tile.x][tile.y] = 2;
+		break;
+	case Blocker::Wall:
+		Wall(tile);
+		break;
+	}
+}
+
+/** What the game's mouse code (SendWalkToCursor) sends while the button is held over (x, y). */
+struct MouseState {
+	int32_t lastX = INT32_MIN;
+	int32_t lastY = INT32_MIN;
+};
+
+void SendFine(Player &player, int32_t x, int32_t y)
+{
+	const Point tile { (x + 128) >> 8, (y + 128) >> 8 };
+	const int fx = x - tile.x * 256 + 128;
+	const int fy = y - tile.y * 256 + 128;
+	d2::OnWalkFine(player, tile, static_cast<uint16_t>(fx | (fy << 8)));
+}
+
+void MouseHeldTick(Player &player, MouseState &mouse, int32_t x, int32_t y)
+{
+	const d2::FreeMoveState &move = player.freeMove;
+	if (std::abs(x - mouse.lastX) < 32 && std::abs(y - mouse.lastY) < 32) {
+		const bool arrived = std::abs(move.x - mouse.lastX) < 32 && std::abs(move.y - mouse.lastY) < 32;
+		if (move.active || arrived)
+			return;
+	}
+	mouse.lastX = x;
+	mouse.lastY = y;
+	SendFine(player, x, y);
+}
+
+void GamepadTick(Player &player, Displacement dir)
+{
+	const Point ahead = player.position.future + dir;
+	ClrPlrPath(player);
+	MakePlrPath(player, ahead, true);
+	player.destAction = ACTION_NONE;
+}
+
+TEST_F(D2Harness, NothingTrapsTheHero)
+{
+	// Your exact situations, for everything that can stand in the way: walk into a chest, monster, townsperson,
+	// another hero or a wall (mouse held, mouse click or gamepad), keep pushing, then head off somewhere else.
+	// Wherever stock Diablo 1 can walk, the hero must get there.
+	const Point blocker { 45, 45 };
+	int cases = 0;
+	int failures = 0;
+	for (const Blocker kind : { Blocker::Chest, Blocker::Monster, Blocker::Townsperson, Blocker::OtherHero, Blocker::Wall }) {
+		for (const Control control : { Control::MouseHeld, Control::MouseClick, Control::Gamepad }) {
+			int kindFailures = 0;
+			for (int side = 0; side < 8; side++) {
+				for (int fine = 0; fine < 3; fine++) {
+					for (int away = 0; away < 16; away++) {
+						ClearLevel();
+						PlaceBlocker(kind, blocker);
+						const Displacement towards = ScreenSteps[(side + 4) % 8];
+						const Point start = blocker + ScreenSteps[side] + ScreenSteps[side];
+						Player &player = SetupHero(start, false);
+						player.isRunning = true;
+						MouseState mouse;
+						const int fo[3] = { 0, 70, -90 };
+						// Phase 1: walk into the blocker and keep pushing
+						const int32_t intoX = (blocker.x + 2 * towards.deltaX) * 256 + fo[fine];
+						const int32_t intoY = (blocker.y + 2 * towards.deltaY) * 256 - fo[fine];
+						for (int tick = 0; tick < 40; tick++) {
+							if (control == Control::MouseHeld)
+								MouseHeldTick(player, mouse, intoX, intoY);
+							else if (control == Control::Gamepad)
+								GamepadTick(player, towards);
+							else if (tick == 0)
+								SendFine(player, intoX, intoY);
+							ProcessPlayers();
+							d2probe::CheckTick();
+						}
+						// Phase 2: head somewhere else, 4 tiles out from the blocker
+						const double a = away * 3.14159265358979 / 8;
+						const Point goal = blocker + Displacement { static_cast<int>(std::lround(std::cos(a) * 4)), static_cast<int>(std::lround(std::sin(a) * 4)) };
+						if (goal == player.position.tile || !PosOkPlayer(player, goal))
+							continue;
+						int8_t path[MaxPathLength];
+						if (FindPath([&player](Point position) { return PosOkPlayer(player, position); }, player.position.tile, goal, path) == 0)
+							continue;
+						cases++;
+						const int32_t gx = goal.x * 256 + fo[(fine + 1) % 3], gy = goal.y * 256 + fo[(fine + 2) % 3];
+						bool arrived = false;
+						for (int tick = 0; tick < 300 && !arrived; tick++) {
+							if (control == Control::MouseHeld) {
+								MouseHeldTick(player, mouse, gx, gy);
+							} else if (control == Control::Gamepad) {
+								// steer the stick along the stock path, one step at a time, as a player would
+								int8_t steps[MaxPathLength];
+								if (FindPath([&player](Point position) { return PosOkPlayer(player, position); }, player.position.tile, goal, steps) > 0)
+									GamepadTick(player, d2::WalkStepDisplacement(steps[0]));
+							} else if (tick == 0) {
+								SendFine(player, gx, gy);
+							}
+							ProcessPlayers();
+							d2probe::CheckTick();
+							arrived = player.position.tile == goal && !d2::FreeMoveActive(player) && player._pmode == PM_STAND;
+						}
+						if (!arrived) {
+							failures++;
+							if (++kindFailures <= 2)
+								ADD_FAILURE() << Name(kind) << ", " << Name(control) << ": walked in from side " << side << ", then stuck at ("
+								              << player.position.tile.x - blocker.x << "," << player.position.tile.y - blocker.y << ") heading for ("
+								              << goal.x - blocker.x << "," << goal.y - blocker.y << ")";
+						}
+					}
+				}
+			}
+			std::printf("TRAP %s / %s: %d stuck\n", Name(kind), Name(control), kindFailures);
+		}
+	}
+	std::printf("TRAPS cases=%d stuck=%d\n", cases, failures);
+	EXPECT_GT(cases, 3000);
+}
+
 TEST_F(D2Harness, NeverStuckAmongScatteredObjects)
 {
 	// A room strewn with chests and barrels: every trip stock path finding can make, the mod must finish
@@ -723,7 +885,7 @@ TEST_F(D2Harness, FacingFollowsTheMouse)
 			bool steady = true;
 			for (int k = 1; k < 3; k++) {
 				double turn = std::fmod(std::abs(ScreenAngle(histX[k], histY[k]) - ScreenAngle(histX[0], histY[0])) + 360.0, 360.0);
-				steady = steady && std::min(turn, 360.0 - turn) < 15.0;
+				steady = steady && std::min(turn, 360.0 - turn) < 8.0;
 			}
 			if (!steady) {
 				lastTickMismatched = false;
@@ -895,4 +1057,5 @@ TEST_F(D2Harness, ProbesCoverTheMovementPath)
 
 } // namespace
 } // namespace devilution
+
 
