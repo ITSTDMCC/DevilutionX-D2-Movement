@@ -10,6 +10,7 @@
  * Licensed under the Sustainable Use License (LICENSE.md); see NOTICE-D2MOVEMENT.md.
  */
 #include <gtest/gtest.h>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <chrono>
@@ -1187,6 +1188,65 @@ TEST_F(D2Harness, HitMonstersStopOnTheNearerTile)
 	EXPECT_GT(finished, 0);
 	EXPECT_GT(returned, 0);
 	EXPECT_LE(worstJump, 34) << "a monster eased more than about half a tile";
+}
+
+TEST_F(D2Harness, HitMonstersNeverFlyOffTheirStep)
+{
+	// All 8 walk directions, set up exactly like stock M_Walk, hit on every frame of the step: on the hit frame the
+	// monster must be drawn somewhere on its own step (never pushed past either tile, e.g. into a wall) and move
+	// forward frame by frame, and the ease-back must be at most half a step.
+	struct WalkCase {
+		Direction dir;
+		MonsterMode mode;
+		int dx;
+		int dy;
+	};
+	const WalkCase walks[] = {
+		{ Direction::North, MonsterMode::MoveNorthwards, -1, -1 },
+		{ Direction::NorthEast, MonsterMode::MoveNorthwards, 0, -1 },
+		{ Direction::East, MonsterMode::MoveSideways, 1, -1 },
+		{ Direction::SouthEast, MonsterMode::MoveSouthwards, 1, 0 },
+		{ Direction::South, MonsterMode::MoveSouthwards, 1, 1 },
+		{ Direction::SouthWest, MonsterMode::MoveSouthwards, 0, 1 },
+		{ Direction::West, MonsterMode::MoveSideways, -1, 1 },
+		{ Direction::NorthWest, MonsterMode::MoveNorthwards, -1, 0 },
+	};
+	int cases = 0;
+	int worst = 0;
+	for (const WalkCase &walk : walks) {
+		const Displacement step = ScreenOf(walk.dx, walk.dy);
+		int lastAlong = -1;
+		for (int frame = 0; frame < 8; frame++) {
+			Monster monster {};
+			const WorldTilePosition from { 40, 40 };
+			const WorldTilePosition to { static_cast<WorldTileCoord>(40 + walk.dx), static_cast<WorldTileCoord>(40 + walk.dy) };
+			monster.position.old = from;
+			monster.position.future = to;
+			monster.position.tile = walk.mode == MonsterMode::MoveSouthwards ? to : from;
+			monster.direction = walk.dir;
+			monster.mode = walk.mode;
+			monster.animInfo.setNewAnimation(std::nullopt, 8, 1);
+			for (int i = 0; i < frame; i++)
+				monster.animInfo.processAnimation();
+			d2::SettleMonsterHitMidStep(monster);
+			d2::BeginMonsterHitSlide(monster);
+			const Displacement slide = d2::MonsterHitSlideOffset(monster, 0);
+			const Displacement drawn = ScreenOf(monster.position.old.x - 40, monster.position.old.y - 40) + slide;
+			cases++;
+			const std::string where = fmt::format("dir {} frame {}: drawn ({},{}) on a step to ({},{})", static_cast<int>(walk.dir), frame, drawn.deltaX, drawn.deltaY, step.deltaX, step.deltaY);
+			EXPECT_GE(drawn.deltaX, std::min(0, step.deltaX)) << where;
+			EXPECT_LE(drawn.deltaX, std::max(0, step.deltaX)) << where;
+			EXPECT_GE(drawn.deltaY, std::min(0, step.deltaY)) << where;
+			EXPECT_LE(drawn.deltaY, std::max(0, step.deltaY)) << where;
+			const int along = drawn.deltaX * step.deltaX + drawn.deltaY * step.deltaY;
+			EXPECT_GE(along, lastAlong) << "went backwards, " << where;
+			lastAlong = along;
+			EXPECT_LE(std::abs(slide.deltaX), 32) << where;
+			EXPECT_LE(std::abs(slide.deltaY), 16) << where;
+			worst = std::max({ worst, std::abs(slide.deltaX), std::abs(slide.deltaY) * 2 });
+		}
+	}
+	std::printf("HITDIRS cases=%d worst=%d px\n", cases, worst);
 }
 
 TEST_F(D2Harness, WallsAreNeverEntered)

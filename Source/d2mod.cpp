@@ -1096,11 +1096,18 @@ Displacement TileDeltaOnScreen(int dx, int dy)
 /** Where a walking monster is drawn, relative to the tile it set out from (screen pixels). */
 Displacement MonsterDrawnFromOld(const Monster &monster)
 {
+	// DrawMonsterHelper draws from the tile holding the positive dMonster entry: the current tile for
+	// MoveNorthwards (the one it leaves) and MoveSouthwards (the one it enters), the destination for
+	// MoveSideways, except a sideways walk to the West, which is drawn from the tile it leaves (still
+	// position.tile while walking sideways), shifted 64 pixels.
+	// (position.old may already have been moved to the destination by SettleMonsterHitMidStep.)
 	Point drawTile { monster.position.tile.x, monster.position.tile.y };
 	Displacement offset = GetOffsetForWalking(monster.animInfo, monster.direction);
-	if (monster.mode == MonsterMode::MoveSideways && monster.direction == Direction::West) {
-		drawTile = Point { monster.position.future.x, monster.position.future.y };
-		offset -= Displacement { 64, 0 };
+	if (monster.mode == MonsterMode::MoveSideways) {
+		if (monster.direction == Direction::West)
+			offset -= Displacement { 64, 0 };
+		else
+			drawTile = Point { monster.position.future.x, monster.position.future.y };
 	}
 	return TileDeltaOnScreen(drawTile.x - monster.position.old.x, drawTile.y - monster.position.old.y) + offset;
 }
@@ -1131,7 +1138,10 @@ void BeginMonsterHitSlide(Monster &monster)
 	if ((!MovementEnabled() && !Filming) || !monster.isWalking())
 		return;
 	// Where the walk is drawn right now (same rules as DrawMonsterHelper), relative to the tile it settles on
-	const Displacement slide = MonsterDrawnFromOld(monster);
+	Displacement slide = MonsterDrawnFromOld(monster);
+	// Never more than half a step (32 pixels across, 16 up or down): the monster stops on the nearer tile
+	slide.deltaX = std::clamp(slide.deltaX, -32, 32);
+	slide.deltaY = std::clamp(slide.deltaY, -16, 16);
 	if (slide == Displacement {})
 		return;
 	monster.d2HitSlide = slide;
